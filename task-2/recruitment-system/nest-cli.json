@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/recruitment-system/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/recruitment-system/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/recruitment-system",
+  "projects": {
+    "candidate-service": {
+      "type": "application",
+      "root": "apps/candidate-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/candidate-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/candidate-service/tsconfig.app.json"
+      }
+    },
+    "gateway-service": {
+      "type": "application",
+      "root": "apps/gateway-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/gateway-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/gateway-service/tsconfig.app.json"
+      }
+    },
+    "notification-service": {
+      "type": "application",
+      "root": "apps/notification-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/notification-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/notification-service/tsconfig.app.json"
+      }
+    },
+    "parsing-service": {
+      "type": "application",
+      "root": "apps/parsing-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/parsing-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/parsing-service/tsconfig.app.json"
+      }
+    },
+    "qualification-service": {
+      "type": "application",
+      "root": "apps/qualification-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/qualification-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/qualification-service/tsconfig.app.json"
+      }
+    },
+    "recruitment-service": {
+      "type": "application",
+      "root": "apps/recruitment-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/recruitment-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/recruitment-service/tsconfig.app.json"
+      }
+    },
+    "recruitment-system": {
+      "type": "application",
+      "root": "apps/recruitment-system",
+      "entryFile": "main",
+      "sourceRoot": "apps/recruitment-system/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/recruitment-system/tsconfig.app.json"
+      }
+    },
+    "skills-service": {
+      "type": "application",
+      "root": "apps/skills-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/skills-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/skills-service/tsconfig.app.json"
+      }
+    },
+    "verification-service": {
+      "type": "application",
+      "root": "apps/verification-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/verification-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/verification-service/tsconfig.app.json"
+      }
+    }
+  }
+}
