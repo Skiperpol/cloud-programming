@@ -1,14 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "apps/recruitment-system/src",
+  "sourceRoot": "apps",
   "compilerOptions": {
     "deleteOutDir": true,
-    "webpack": true,
-    "tsConfigPath": "apps/recruitment-system/tsconfig.app.json"
+    "webpack": true
   },
   "monorepo": true,
-  "root": "apps/recruitment-system",
+  "root": ".",
   "projects": {
     "candidate-service": {
       "type": "application",
@@ -53,33 +52,6 @@
       "sourceRoot": "apps/qualification-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/qualification-service/tsconfig.app.json"
-      }
-    },
-    "recruitment-service": {
-      "type": "application",
-      "root": "apps/recruitment-service",
-      "entryFile": "main",
-      "sourceRoot": "apps/recruitment-service/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/recruitment-service/tsconfig.app.json"
-      }
-    },
-    "recruitment-system": {
-      "type": "application",
-      "root": "apps/recruitment-system",
-      "entryFile": "main",
-      "sourceRoot": "apps/recruitment-system/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/recruitment-system/tsconfig.app.json"
-      }
-    },
-    "skills-service": {
-      "type": "application",
-      "root": "apps/skills-service",
-      "entryFile": "main",
-      "sourceRoot": "apps/skills-service/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/skills-service/tsconfig.app.json"
       }
     },
     "verification-service": {
