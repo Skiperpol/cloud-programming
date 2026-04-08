@@ -1,7 +1,6 @@
 import { Controller, Inject } from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import {
-  APPLICATION_SUBMITTED,
   SAFETY_VERIFIED,
   SKILLS_READY,
 } from '../../../../../libs/shared/events';
@@ -9,18 +8,15 @@ import { EvaluateCandidateUseCase } from '../../application/use-cases/evaluate-c
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger } from 'winston';
 
-interface ApplicationSubmittedPayload {
-  email: string;
-  applicationId: string;
-}
-
 interface SkillsReadyPayload {
   applicationId: string;
+  email: string;
   skills: string[];
 }
 
 interface SafetyVerifiedPayload {
   applicationId: string;
+  email: string;
   isBlacklisted: boolean;
 }
 
@@ -43,27 +39,12 @@ export class QualificationMessageHandler {
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
   ) {}
 
-  @EventPattern(APPLICATION_SUBMITTED)
-  async onApplicationSubmitted(
-    @Payload() payload: ApplicationSubmittedPayload,
-  ): Promise<void> {
-    this.logger.info('Qualification received application context', {
-      email: payload.email,
-      applicationId: payload.applicationId,
-    });
-    const current = this.pendingByApplicationId.get(payload.applicationId) ?? {
-      processed: false,
-    };
-    current.email = payload.email;
-    this.pendingByApplicationId.set(payload.applicationId, current);
-    await this.tryEvaluate(payload.applicationId);
-  }
-
   @EventPattern(SKILLS_READY)
   async onSkillsReady(@Payload() payload: SkillsReadyPayload): Promise<void> {
     const current = this.pendingByApplicationId.get(payload.applicationId) ?? {
       processed: false,
     };
+    current.email = payload.email;
     current.skills = payload.skills;
     this.pendingByApplicationId.set(payload.applicationId, current);
     await this.tryEvaluate(payload.applicationId);
@@ -76,6 +57,7 @@ export class QualificationMessageHandler {
     const current = this.pendingByApplicationId.get(payload.applicationId) ?? {
       processed: false,
     };
+    current.email = payload.email;
     current.isBlacklisted = payload.isBlacklisted;
     this.pendingByApplicationId.set(payload.applicationId, current);
     await this.tryEvaluate(payload.applicationId);

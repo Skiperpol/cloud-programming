@@ -21,6 +21,7 @@ export class ParsingMessageHandler {
     await this.parseDocumentUseCase.parseDocument(payload.email);
     this.qualificationBus.emit(SKILLS_READY, {
       applicationId: payload.applicationId,
+      email: payload.email,
       skills: ['Java', 'SQL'],
     });
   }

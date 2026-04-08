@@ -18,11 +18,13 @@ export class VerificationMessageHandler {
   async onApplicationSubmitted(
     @Payload() payload: { email: string; applicationId: string },
   ): Promise<void> {
-    const isBlacklisted = await this.checkBlacklistStatusUseCase.checkBlacklistStatus(
-      payload.email,
-    );
+    const isBlacklisted =
+      await this.checkBlacklistStatusUseCase.checkBlacklistStatus(
+        payload.email,
+      );
     this.qualificationBus.emit(SAFETY_VERIFIED, {
       applicationId: payload.applicationId,
+      email: payload.email,
       isBlacklisted,
     });
   }

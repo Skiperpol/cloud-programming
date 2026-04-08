@@ -53,15 +53,6 @@ import { ConfigModule } from '@nestjs/config';
           queueOptions: { durable: true },
         },
       },
-      {
-        name: 'QUALIFICATION_BUS',
-        transport: Transport.RMQ,
-        options: {
-          urls: [process.env.RABBITMQ_URL ?? 'amqp://localhost:5672'],
-          queue: process.env.QUALIFICATION_QUEUE ?? 'qualification.events',
-          queueOptions: { durable: true },
-        },
-      },
     ]),
   ],
   controllers: [RecruitmentController],

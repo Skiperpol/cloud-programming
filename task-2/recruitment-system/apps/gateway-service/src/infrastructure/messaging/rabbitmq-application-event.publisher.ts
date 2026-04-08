@@ -11,14 +11,11 @@ export class RabbitMqApplicationEventPublisher implements ApplicationEventPublis
     @Inject('PARSER_BUS') private readonly parserClient: ClientProxy,
     @Inject('VERIFICATION_BUS')
     private readonly verificationClient: ClientProxy,
-    @Inject('QUALIFICATION_BUS')
-    private readonly qualificationClient: ClientProxy,
   ) {}
 
   publishApplicationSubmitted(event: ApplicationSubmittedEvent): void {
     this.candidateClient.emit(APPLICATION_SUBMITTED, event);
     this.parserClient.emit(APPLICATION_SUBMITTED, event);
     this.verificationClient.emit(APPLICATION_SUBMITTED, event);
-    this.qualificationClient.emit(APPLICATION_SUBMITTED, event);
   }
 }
