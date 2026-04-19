@@ -1,13 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
-import { ListCandidatesUseCase } from '../../application/use-cases/list-candidates.use-case';
-import { CandidateEntity } from '../../infrastructure/persistence/candidate.entity';
+import { QueryBus } from '@nestjs/cqrs';
+import { CandidateDto } from '../../application/dto/candidate.dto';
+import { ListCandidatesQuery } from '../../application/queries/list-candidates.query';
 
 @Controller('candidates')
 export class CandidateController {
-  constructor(private readonly listCandidatesUseCase: ListCandidatesUseCase) {}
+  constructor(private readonly queryBus: QueryBus) {}
 
   @Get()
-  list(): Promise<CandidateEntity[]> {
-    return this.listCandidatesUseCase.execute();
+  list(): Promise<CandidateDto[]> {
+    return this.queryBus.execute(new ListCandidatesQuery());
   }
 }
