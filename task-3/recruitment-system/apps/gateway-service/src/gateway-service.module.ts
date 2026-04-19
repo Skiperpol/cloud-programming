@@ -15,8 +15,8 @@ import { FILE_METADATA_LOGGER_PORT } from './application/ports/file-metadata-log
 import { FileMetadataLogger } from './infrastructure/logging/file-metadata.logger';
 import { RabbitMqApplicationEventPublisher } from './infrastructure/messaging/rabbitmq-application-event.publisher';
 import { GatewayApplicationEntity } from './infrastructure/persistence/gateway-application.entity';
-import { TypeormApplicationReadAdapter } from './infrastructure/persistence/typeorm-application-read.adapter';
-import { TypeormApplicationRepositoryAdapter } from './infrastructure/persistence/typeorm-application-repository.adapter';
+import { TypeOrmApplicationReadAdapter } from './infrastructure/persistence/typeorm-application-read.adapter';
+import { TypeOrmApplicationRepositoryAdapter } from './infrastructure/persistence/typeorm-application-repository.adapter';
 import { S3ApplicationFileStorage } from './infrastructure/storage/s3-application-file.storage';
 import { RecruitmentController } from './interface/http/recruitment.controller';
 
@@ -76,19 +76,19 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
     },
     {
       provide: APPLICATION_READ_PORT,
-      useExisting: TypeormApplicationReadAdapter,
+      useClass: TypeOrmApplicationReadAdapter,
     },
     {
       provide: APPLICATION_REPOSITORY_PORT,
-      useExisting: TypeormApplicationRepositoryAdapter,
+      useClass: TypeOrmApplicationRepositoryAdapter,
     },
     {
       provide: APPLICATION_FILE_STORAGE_PORT,
-      useExisting: S3ApplicationFileStorage,
+      useClass: S3ApplicationFileStorage,
     },
     {
       provide: FILE_METADATA_LOGGER_PORT,
-      useExisting: FileMetadataLogger,
+      useClass: FileMetadataLogger,
     },
   ],
 })
