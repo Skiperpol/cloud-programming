@@ -24,4 +24,24 @@ export class TypeOrmApplicationReadAdapter implements ApplicationReadPort {
       s3ObjectKey: entity.s3ObjectKey,
     }));
   }
+
+  async findByApplicationId(
+    applicationId: string,
+  ): Promise<ApplicationDto | null> {
+    const entity = await this.repository.findOne({
+      where: { applicationId },
+    });
+    if (!entity) {
+      return null;
+    }
+    return {
+      applicationId: entity.applicationId,
+      email: entity.email,
+      fileName: entity.fileName,
+      extension: entity.extension,
+      sizeBytes: entity.sizeBytes,
+      uploadedAt: entity.uploadedAt,
+      s3ObjectKey: entity.s3ObjectKey,
+    };
+  }
 }

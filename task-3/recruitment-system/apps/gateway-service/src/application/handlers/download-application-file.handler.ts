@@ -7,8 +7,8 @@ import {
   ApplicationFileNotFoundError,
 } from '../ports/application-file-storage.port';
 import type { ApplicationFileStoragePort } from '../ports/application-file-storage.port';
-import { APPLICATION_REPOSITORY_PORT } from '../ports/application-repository.port';
-import type { ApplicationRepositoryPort } from '../ports/application-repository.port';
+import { APPLICATION_READ_PORT } from '../ports/application-read.port';
+import type { ApplicationReadPort } from '../ports/application-read.port';
 
 export interface DownloadApplicationFileResult {
   stream: Readable;
@@ -23,8 +23,8 @@ export class DownloadApplicationFileHandler implements IQueryHandler<
   DownloadApplicationFileResult
 > {
   constructor(
-    @Inject(APPLICATION_REPOSITORY_PORT)
-    private readonly applicationRepository: ApplicationRepositoryPort,
+    @Inject(APPLICATION_READ_PORT)
+    private readonly applicationReadPort: ApplicationReadPort,
     @Inject(APPLICATION_FILE_STORAGE_PORT)
     private readonly fileStorage: ApplicationFileStoragePort,
   ) {}
@@ -32,7 +32,7 @@ export class DownloadApplicationFileHandler implements IQueryHandler<
   async execute(
     query: DownloadApplicationFileQuery,
   ): Promise<DownloadApplicationFileResult> {
-    const application = await this.applicationRepository.findByApplicationId(
+    const application = await this.applicationReadPort.findByApplicationId(
       query.applicationId,
     );
     if (!application) {
