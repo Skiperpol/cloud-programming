@@ -6,7 +6,7 @@ import { ApplicationRepositoryPort } from '../../application/ports/application-r
 import { GatewayApplicationEntity } from './gateway-application.entity';
 
 @Injectable()
-export class TypeormApplicationRepositoryAdapter implements ApplicationRepositoryPort {
+export class TypeOrmApplicationRepositoryAdapter implements ApplicationRepositoryPort {
   constructor(
     @InjectRepository(GatewayApplicationEntity)
     private readonly repository: Repository<GatewayApplicationEntity>,

@@ -6,7 +6,7 @@ import { ApplicationDto } from '../../application/dto/application.dto';
 import { GatewayApplicationEntity } from './gateway-application.entity';
 
 @Injectable()
-export class TypeormApplicationReadAdapter implements ApplicationReadPort {
+export class TypeOrmApplicationReadAdapter implements ApplicationReadPort {
   constructor(
     @InjectRepository(GatewayApplicationEntity)
     private readonly repository: Repository<GatewayApplicationEntity>,
