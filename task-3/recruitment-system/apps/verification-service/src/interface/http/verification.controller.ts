@@ -1,15 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
-import { ListBlacklistEntriesUseCase } from '../../application/use-cases/list-blacklist-entries.use-case';
-import { BlacklistEntryEntity } from '../../infrastructure/persistence/blacklist-entry.entity';
+import { QueryBus } from '@nestjs/cqrs';
+import { BlacklistEntryDto } from '../../application/dto/blacklist-entry.dto';
+import { ListBlacklistEntriesQuery } from '../../application/queries/list-blacklist-entries.query';
 
 @Controller('verification')
 export class VerificationController {
-  constructor(
-    private readonly listBlacklistEntriesUseCase: ListBlacklistEntriesUseCase,
-  ) {}
+  constructor(private readonly queryBus: QueryBus) {}
 
   @Get('blacklist')
-  list(): Promise<BlacklistEntryEntity[]> {
-    return this.listBlacklistEntriesUseCase.execute();
+  list(): Promise<BlacklistEntryDto[]> {
+    return this.queryBus.execute(new ListBlacklistEntriesQuery());
   }
 }
