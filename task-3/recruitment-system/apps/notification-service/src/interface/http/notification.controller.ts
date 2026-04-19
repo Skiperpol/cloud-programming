@@ -1,28 +1,43 @@
-import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
+import { SaveNotificationCommand } from '../../application/commands/save-notification.command';
+import { NotificationDto } from '../../application/dto/notification.dto';
+import {
+  GetNotificationByEmailQuery,
+  GetNotificationByEmailQueryResult,
+} from '../../application/queries/get-notification-by-email.query';
+import { ListNotificationsQuery } from '../../application/queries/list-notifications.query';
 import { CreateNotificationDto } from './dto/create-notification.dto';
-import { ListNotificationsUseCase } from '../../application/use-cases/list-notifications.use-case';
-import { SaveNotificationUseCase } from '../../application/use-cases/save-notification.use-case';
-import { NotificationEntity } from '../../infrastructure/persistence/notification.entity';
 
 @Controller('notifications')
 export class NotificationController {
   constructor(
-    private readonly saveNotificationUseCase: SaveNotificationUseCase,
-    private readonly listNotificationsUseCase: ListNotificationsUseCase,
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus,
   ) {}
 
   @Get('status')
-  async status(@Query('email') email: string): Promise<{ email: string; message: string | null }> {
-    const found = await this.saveNotificationUseCase.findByEmail(email);
+  async status(
+    @Query('email') email: string,
+  ): Promise<{ email: string; message: string | null }> {
+    const found: GetNotificationByEmailQueryResult =
+      await this.queryBus.execute(new GetNotificationByEmailQuery(email));
     return {
       email,
-      message: found?.message ?? null,
+      message: found.notification.message ?? null,
     };
   }
 
   @Get()
-  list(): Promise<NotificationEntity[]> {
-    return this.listNotificationsUseCase.execute();
+  list(): Promise<NotificationDto[]> {
+    return this.queryBus.execute(new ListNotificationsQuery());
   }
 
   @Post()
@@ -33,7 +48,9 @@ export class NotificationController {
       throw new BadRequestException('Request body is required');
     }
 
-    await this.saveNotificationUseCase.save(body.email, body.result);
+    await this.commandBus.execute(
+      new SaveNotificationCommand(body.email, body.result),
+    );
     return {
       message: 'Notification saved successfully',
       email: body.email,
