@@ -1,28 +1,30 @@
 import { Controller, Inject } from '@nestjs/common';
-import { ClientProxy, EventPattern, Payload } from '@nestjs/microservices';
-import {
-  APPLICATION_SUBMITTED,
-  SKILLS_READY,
-} from '../../../../../libs/shared/events';
-import { ParseDocumentUseCase } from '../../application/use-cases/parse-document.use-case';
+import { CommandBus } from '@nestjs/cqrs';
+import { EventPattern, Payload } from '@nestjs/microservices';
+import { APPLICATION_SUBMITTED } from '../../../../../libs/shared/events';
+import { ParseDocumentCommand } from '../../application/commands/parse-document.command';
+import { SKILLS_EVENT_PUBLISHER } from '../../application/ports/skills-event.publisher.port';
+import type { SkillsEventPublisherPort } from '../../application/ports/skills-event.publisher.port';
+import { ParsedSkillSet } from '../../domain/parsed-skill-set';
 
 @Controller()
 export class ParsingMessageHandler {
   constructor(
-    private readonly parseDocumentUseCase: ParseDocumentUseCase,
-    @Inject('QUALIFICATION_BUS')
-    private readonly qualificationBus: ClientProxy,
+    private readonly commandBus: CommandBus,
+    @Inject(SKILLS_EVENT_PUBLISHER)
+    private readonly skillsEventPublisher: SkillsEventPublisherPort,
   ) {}
 
   @EventPattern(APPLICATION_SUBMITTED)
   async onApplicationSubmitted(
     @Payload() payload: { email: string; applicationId: string },
   ): Promise<void> {
-    await this.parseDocumentUseCase.parseDocument(payload.email);
-    this.qualificationBus.emit(SKILLS_READY, {
+    await this.commandBus.execute(new ParseDocumentCommand(payload.email));
+    const skills = ParsedSkillSet.stub();
+    this.skillsEventPublisher.publishSkillsReady({
       applicationId: payload.applicationId,
       email: payload.email,
-      skills: ['Java', 'SQL'],
+      skills: skills.toPersistedArray(),
     });
   }
 }

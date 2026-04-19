@@ -1,15 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
-import { ListParsedDocumentsUseCase } from '../../application/use-cases/list-parsed-documents.use-case';
-import { ParsedDocumentEntity } from '../../infrastructure/persistence/parsed-document.entity';
+import { QueryBus } from '@nestjs/cqrs';
+import { ParsedDocumentDto } from '../../application/dto/parsed-document.dto';
+import { ListParsedDocumentsQuery } from '../../application/queries/list-parsed-documents.query';
 
 @Controller('parser')
 export class ParsingController {
-  constructor(
-    private readonly listParsedDocumentsUseCase: ListParsedDocumentsUseCase,
-  ) {}
+  constructor(private readonly queryBus: QueryBus) {}
 
   @Get('documents')
-  list(): Promise<ParsedDocumentEntity[]> {
-    return this.listParsedDocumentsUseCase.execute();
+  list(): Promise<ParsedDocumentDto[]> {
+    return this.queryBus.execute(new ListParsedDocumentsQuery());
   }
 }

@@ -1,16 +1,25 @@
 import { Module } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
+import { ListParsedDocumentsHandler } from './application/handlers/list-parsed-documents.handler';
+import { ParseDocumentHandler } from './application/handlers/parse-document.handler';
+import { PARSED_DOCUMENT_READ_PORT } from './application/ports/parsed-document-read.port';
+import { PARSED_DOCUMENT_REPOSITORY_PORT } from './application/ports/parsed-document-repository.port';
+import { SKILLS_EVENT_PUBLISHER } from './application/ports/skills-event.publisher.port';
 import { ParsedDocumentEntity } from './infrastructure/persistence/parsed-document.entity';
-import { ParseDocumentUseCase } from './application/use-cases/parse-document.use-case';
-import { ListParsedDocumentsUseCase } from './application/use-cases/list-parsed-documents.use-case';
+import { RabbitMqSkillsEventPublisher } from './infrastructure/messaging/rabbitmq-skills-event.publisher';
+import { ParsingLogger } from './infrastructure/logging/parsing.logger';
+import { TypeOrmParsedDocumentReadAdapter } from './infrastructure/persistence/typeorm-parsed-document-read.adapter';
+import { TypeOrmParsedDocumentRepositoryAdapter } from './infrastructure/persistence/typeorm-parsed-document-repository.adapter';
 import { ParsingMessageHandler } from './interface/messaging/parsing.message-handler';
 import { ParsingController } from './interface/http/parsing.controller';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    CqrsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -36,6 +45,24 @@ import { ConfigModule } from '@nestjs/config';
     ]),
   ],
   controllers: [ParsingMessageHandler, ParsingController],
-  providers: [ParseDocumentUseCase, ListParsedDocumentsUseCase],
+  providers: [
+    ParseDocumentHandler,
+    ListParsedDocumentsHandler,
+    ParsingLogger,
+    {
+      provide: SKILLS_EVENT_PUBLISHER,
+      useClass: RabbitMqSkillsEventPublisher,
+    },
+    TypeOrmParsedDocumentReadAdapter,
+    TypeOrmParsedDocumentRepositoryAdapter,
+    {
+      provide: PARSED_DOCUMENT_READ_PORT,
+      useExisting: TypeOrmParsedDocumentReadAdapter,
+    },
+    {
+      provide: PARSED_DOCUMENT_REPOSITORY_PORT,
+      useExisting: TypeOrmParsedDocumentRepositoryAdapter,
+    },
+  ],
 })
 export class ParsingServiceModule {}
