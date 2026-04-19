@@ -1,16 +1,23 @@
 import { Module } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
+import { CheckBlacklistStatusHandler } from './application/handlers/check-blacklist-status.handler';
+import { ListBlacklistEntriesHandler } from './application/handlers/list-blacklist-entries.handler';
+import { BLACKLIST_READ_PORT } from './application/ports/blacklist-read.port';
+import { SAFETY_EVENT_PUBLISHER } from './application/ports/safety-event.publisher.port';
+import { VerificationLogger } from './infrastructure/logging/verification.logger';
+import { RabbitMqSafetyEventPublisher } from './infrastructure/messaging/rabbitmq-safety-event.publisher';
 import { BlacklistEntryEntity } from './infrastructure/persistence/blacklist-entry.entity';
-import { CheckBlacklistStatusUseCase } from './application/use-cases/check-blacklist-status.use-case';
-import { ListBlacklistEntriesUseCase } from './application/use-cases/list-blacklist-entries.use-case';
+import { TypeOrmBlacklistReadAdapter } from './infrastructure/persistence/typeorm-blacklist-read.adapter';
 import { VerificationMessageHandler } from './interface/messaging/verification.message-handler';
 import { VerificationController } from './interface/http/verification.controller';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    CqrsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -36,6 +43,19 @@ import { ConfigModule } from '@nestjs/config';
     ]),
   ],
   controllers: [VerificationMessageHandler, VerificationController],
-  providers: [CheckBlacklistStatusUseCase, ListBlacklistEntriesUseCase],
+  providers: [
+    CheckBlacklistStatusHandler,
+    ListBlacklistEntriesHandler,
+    VerificationLogger,
+    {
+      provide: SAFETY_EVENT_PUBLISHER,
+      useClass: RabbitMqSafetyEventPublisher,
+    },
+    TypeOrmBlacklistReadAdapter,
+    {
+      provide: BLACKLIST_READ_PORT,
+      useExisting: TypeOrmBlacklistReadAdapter,
+    },
+  ],
 })
 export class VerificationServiceModule {}
