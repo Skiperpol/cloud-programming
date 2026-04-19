@@ -1,40 +1,28 @@
 import {
   GetObjectCommand,
+  NoSuchKey,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'node:stream';
+import {
+  ApplicationFileNotFoundError,
+  ApplicationFileStoragePort,
+} from '../../application/ports/application-file-storage.port';
 
 @Injectable()
-export class S3ApplicationFileStorage {
+export class S3ApplicationFileStorage implements ApplicationFileStoragePort {
   private readonly client: S3Client;
   private readonly bucket: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.bucket = this.config.getOrThrow<string>('AWS_S3_BUCKET');
-    const region = this.config.get<string>('AWS_REGION') ?? 'eu-central-1';
-    const endpoint = this.config.get<string>('AWS_S3_ENDPOINT');
-    const accessKeyId = this.config.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.config.get<string>('AWS_SECRET_ACCESS_KEY');
-    const sessionToken = this.config.get<string>('AWS_SESSION_TOKEN');
-
+  constructor(config: ConfigService) {
+    this.bucket = config.getOrThrow('AWS_S3_BUCKET');
     this.client = new S3Client({
-      region,
-      ...(endpoint ? { endpoint } : {}),
-      ...(this.config.get<string>('AWS_S3_FORCE_PATH_STYLE') === 'true'
-        ? { forcePathStyle: true }
-        : {}),
-      ...(accessKeyId && secretAccessKey
-        ? {
-            credentials: {
-              accessKeyId,
-              secretAccessKey,
-              ...(sessionToken ? { sessionToken } : {}),
-            },
-          }
-        : {}),
+      region: config.get('AWS_REGION'),
+      endpoint: config.get('AWS_S3_ENDPOINT'),
+      forcePathStyle: config.get('AWS_S3_FORCE_PATH_STYLE') === 'true',
     });
   }
 
@@ -47,16 +35,16 @@ export class S3ApplicationFileStorage {
     body: Buffer,
     contentType: string,
   ): Promise<{ objectKey: string }> {
-    const objectKey = this.objectKeyForApplication(applicationId);
+    const Key = `applications/${applicationId}/document`;
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: objectKey,
+        Key,
         Body: body,
         ContentType: contentType,
       }),
     );
-    return { objectKey };
+    return { objectKey: Key };
   }
 
   async getReadableStream(objectKey: string): Promise<{
@@ -64,22 +52,33 @@ export class S3ApplicationFileStorage {
     contentType: string;
     contentLength?: number;
   }> {
-    const output = await this.client.send(
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: objectKey,
-      }),
-    );
-    const body = output.Body;
-    if (!body) {
-      throw new Error('S3 GetObject returned empty body');
+    let Body: unknown;
+    let ContentType: string | undefined;
+    let ContentLength: number | undefined;
+    try {
+      const output = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      );
+      Body = output.Body;
+      ContentType = output.ContentType;
+      ContentLength = output.ContentLength;
+    } catch (error) {
+      if (error instanceof NoSuchKey) {
+        throw new ApplicationFileNotFoundError('File not found in storage');
+      }
+      throw error;
     }
-    const stream = body as Readable;
-    const contentLength = output.ContentLength;
+
+    if (!(Body instanceof Readable)) {
+      throw new InternalServerErrorException(
+        'S3 Body is not a readable stream',
+      );
+    }
+
     return {
-      stream,
-      contentType: output.ContentType ?? 'application/octet-stream',
-      ...(typeof contentLength === 'number' ? { contentLength } : {}),
+      stream: Body,
+      contentType: ContentType ?? 'application/octet-stream',
+      contentLength: ContentLength,
     };
   }
 }

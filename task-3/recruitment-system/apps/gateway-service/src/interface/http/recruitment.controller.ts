@@ -11,22 +11,22 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { DownloadApplicationFileUseCase } from '../../application/use-cases/download-application-file.use-case';
-import { ListApplicationsUseCase } from '../../application/use-cases/list-applications.use-case';
-import { SubmitApplicationUseCase } from '../../application/use-cases/submit-application.use-case';
-import { FileMetadataLogger } from '../../infrastructure/logging/file-metadata.logger';
-import { GatewayApplicationEntity } from '../../infrastructure/persistence/gateway-application.entity';
-import { ApplyDto } from './dto/apply.dto';
+import { ApplicationDto } from '../../application/dto/application.dto';
+import { SubmitApplicationCommand } from '../../application/commands/submit-application.command';
+import { DownloadApplicationFileQuery } from '../../application/queries/download-application-file.query';
+import { ListApplicationsQuery } from '../../application/queries/list-applications.query';
+import { ApplyDto, ApplyResponseDto } from './dto/apply.dto';
+import { SubmitApplicationCommandResult } from '../../application/commands/submit-application.command';
+import { DownloadApplicationFileQueryResult } from '../../application/queries/download-application-file.query';
 
 @Controller('recruitment')
 export class RecruitmentController {
   constructor(
-    private readonly submitApplicationUseCase: SubmitApplicationUseCase,
-    private readonly listApplicationsUseCase: ListApplicationsUseCase,
-    private readonly downloadApplicationFileUseCase: DownloadApplicationFileUseCase,
-    private readonly fileMetadataLogger: FileMetadataLogger,
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus,
   ) {}
 
   @Post('apply')
@@ -34,25 +34,22 @@ export class RecruitmentController {
   async apply(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: ApplyDto,
-  ): Promise<{ applicationId: string; status: string }> {
+  ): Promise<ApplyResponseDto> {
     if (!file?.buffer) {
       throw new BadRequestException('File is required');
     }
 
-    const result = await this.submitApplicationUseCase.execute({
-      email: body.email,
-      originalName: file.originalname ?? 'unknown.bin',
-      fileBuffer: file.buffer,
-      mimeType: file.mimetype || 'application/octet-stream',
-      sizeBytes: file.size,
-    });
-
-    this.fileMetadataLogger.logMetadata(
-      result.fileName,
-      result.extension,
-      body.email,
-      result.sizeBytes,
-      result.s3ObjectKey,
+    const result = await this.commandBus.execute<
+      SubmitApplicationCommand,
+      SubmitApplicationCommandResult
+    >(
+      new SubmitApplicationCommand(
+        body.email,
+        file.originalname ?? 'unknown.bin',
+        file.buffer,
+        file.mimetype || 'application/octet-stream',
+        file.size,
+      ),
     );
 
     return {
@@ -66,14 +63,19 @@ export class RecruitmentController {
     @Param('applicationId', ParseUUIDPipe) applicationId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { stream, contentType, contentLength, downloadFileName } =
-      await this.downloadApplicationFileUseCase.execute(applicationId);
-    const safeName = downloadFileName.replace(/[^\w.-]+/g, '_') || 'document';
+    const result = await this.queryBus.execute<
+      DownloadApplicationFileQuery,
+      DownloadApplicationFileQueryResult
+    >(new DownloadApplicationFileQuery(applicationId));
+    const { stream, contentType, contentLength, downloadFileName } = result;
+    const safeName =
+      typeof downloadFileName === 'string'
+        ? downloadFileName.replace(/[^\w.-]+/g, '_') || 'document'
+        : 'document';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    if (contentLength !== undefined) {
+    if (contentLength !== undefined)
       res.setHeader('Content-Length', String(contentLength));
-    }
     return new StreamableFile(stream);
   }
 
@@ -86,7 +88,7 @@ export class RecruitmentController {
   }
 
   @Get('applications')
-  listApplications(): Promise<GatewayApplicationEntity[]> {
-    return this.listApplicationsUseCase.execute();
+  listApplications(): Promise<ApplicationDto[]> {
+    return this.queryBus.execute(new ListApplicationsQuery());
   }
 }

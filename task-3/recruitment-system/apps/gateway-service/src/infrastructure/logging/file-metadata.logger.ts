@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger } from 'winston';
+import { FileMetadataLoggerPort } from '../../application/ports/file-metadata-logger.port';
 
 @Injectable()
-export class FileMetadataLogger {
+export class FileMetadataLogger implements FileMetadataLoggerPort {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
   ) {}

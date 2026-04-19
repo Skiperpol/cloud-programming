@@ -1,20 +1,28 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
-import { DownloadApplicationFileUseCase } from './application/use-cases/download-application-file.use-case';
-import { ListApplicationsUseCase } from './application/use-cases/list-applications.use-case';
-import { SubmitApplicationUseCase } from './application/use-cases/submit-application.use-case';
+import { DownloadApplicationFileHandler } from './application/handlers/download-application-file.handler';
+import { ListApplicationsHandler } from './application/handlers/list-applications.handler';
+import { SubmitApplicationHandler } from './application/handlers/submit-application.handler';
 import { APPLICATION_EVENT_PUBLISHER } from './application/ports/application-event.publisher.port';
+import { APPLICATION_FILE_STORAGE_PORT } from './application/ports/application-file-storage.port';
+import { APPLICATION_READ_PORT } from './application/ports/application-read.port';
+import { APPLICATION_REPOSITORY_PORT } from './application/ports/application-repository.port';
+import { FILE_METADATA_LOGGER_PORT } from './application/ports/file-metadata-logger.port';
 import { FileMetadataLogger } from './infrastructure/logging/file-metadata.logger';
 import { RabbitMqApplicationEventPublisher } from './infrastructure/messaging/rabbitmq-application-event.publisher';
 import { GatewayApplicationEntity } from './infrastructure/persistence/gateway-application.entity';
+import { TypeormApplicationReadAdapter } from './infrastructure/persistence/typeorm-application-read.adapter';
+import { TypeormApplicationRepositoryAdapter } from './infrastructure/persistence/typeorm-application-repository.adapter';
 import { S3ApplicationFileStorage } from './infrastructure/storage/s3-application-file.storage';
 import { RecruitmentController } from './interface/http/recruitment.controller';
 
 @Module({
   imports: [
+    CqrsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -59,14 +67,28 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
   ],
   controllers: [RecruitmentController],
   providers: [
-    S3ApplicationFileStorage,
-    SubmitApplicationUseCase,
-    ListApplicationsUseCase,
-    DownloadApplicationFileUseCase,
-    FileMetadataLogger,
+    SubmitApplicationHandler,
+    ListApplicationsHandler,
+    DownloadApplicationFileHandler,
     {
       provide: APPLICATION_EVENT_PUBLISHER,
       useClass: RabbitMqApplicationEventPublisher,
+    },
+    {
+      provide: APPLICATION_READ_PORT,
+      useExisting: TypeormApplicationReadAdapter,
+    },
+    {
+      provide: APPLICATION_REPOSITORY_PORT,
+      useExisting: TypeormApplicationRepositoryAdapter,
+    },
+    {
+      provide: APPLICATION_FILE_STORAGE_PORT,
+      useExisting: S3ApplicationFileStorage,
+    },
+    {
+      provide: FILE_METADATA_LOGGER_PORT,
+      useExisting: FileMetadataLogger,
     },
   ],
 })
