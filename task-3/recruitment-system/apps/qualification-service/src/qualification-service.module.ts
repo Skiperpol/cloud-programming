@@ -1,18 +1,23 @@
 import { Module } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { QualificationDecisionEntity } from './infrastructure/persistence/entities/qualification-decision.entity';
-import { EvaluateCandidateUseCase } from './application/use-cases/evaluate-candidate.use-case';
-import { ListQualificationDecisionsUseCase } from './application/use-cases/list-qualification-decisions.use-case';
+import { EvaluateCandidateHandler } from './application/handlers/evaluate-candidate.handler';
+import { ListQualificationDecisionsHandler } from './application/handlers/list-qualification-decisions.handler';
+import { QUALIFICATION_DECISION_REPOSITORY_PORT } from './application/ports/qualification-decision-repository.port';
 import { QualificationController } from './interface/http/qualification.controller';
 import { QualificationMessageHandler } from './interface/messaging/qualification.message-handler';
 import { QUALIFICATION_EVENT_PUBLISHER } from './application/ports/qualification-event.publisher.port';
+import { QualificationLogger } from './infrastructure/logging/qualification.logger';
 import { RabbitMqQualificationEventPublisher } from './infrastructure/messaging/rabbitmq-qualification-event.publisher';
+import { TypeOrmQualificationDecisionRepositoryAdapter } from './infrastructure/persistence/entities/typeorm-qualification-decision-repository.adapter';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    CqrsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -39,11 +44,17 @@ import { ConfigModule } from '@nestjs/config';
   ],
   controllers: [QualificationController, QualificationMessageHandler],
   providers: [
-    EvaluateCandidateUseCase,
-    ListQualificationDecisionsUseCase,
+    EvaluateCandidateHandler,
+    ListQualificationDecisionsHandler,
+    QualificationLogger,
+    TypeOrmQualificationDecisionRepositoryAdapter,
     {
       provide: QUALIFICATION_EVENT_PUBLISHER,
       useClass: RabbitMqQualificationEventPublisher,
+    },
+    {
+      provide: QUALIFICATION_DECISION_REPOSITORY_PORT,
+      useExisting: TypeOrmQualificationDecisionRepositoryAdapter,
     },
   ],
 })

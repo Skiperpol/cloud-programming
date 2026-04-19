@@ -1,14 +1,16 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { EvaluateCandidateUseCase } from '../../application/use-cases/evaluate-candidate.use-case';
-import { ListQualificationDecisionsUseCase } from '../../application/use-cases/list-qualification-decisions.use-case';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
+import { EvaluateCandidateCommand } from '../../application/commands/evaluate-candidate.command';
+import { QualificationDecisionDto } from '../../application/dto/qualification-decision.dto';
+import { ListQualificationDecisionsQuery } from '../../application/queries/list-qualification-decisions.query';
 import { EvaluateDecisionDto } from './dto/evaluate-decision.dto';
-import { QualificationDecisionEntity } from '../../infrastructure/persistence/entities/qualification-decision.entity';
+import { QualificationStatus } from '../../domain/qualification-status.enum';
 
 @Controller('qualification')
 export class QualificationController {
   constructor(
-    private readonly evaluateCandidateUseCase: EvaluateCandidateUseCase,
-    private readonly listQualificationDecisionsUseCase: ListQualificationDecisionsUseCase,
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus,
   ) {}
 
   @Get('health')
@@ -20,8 +22,8 @@ export class QualificationController {
   }
 
   @Get('decisions')
-  list(): Promise<QualificationDecisionEntity[]> {
-    return this.listQualificationDecisionsUseCase.execute();
+  list(): Promise<QualificationDecisionDto[]> {
+    return this.queryBus.execute(new ListQualificationDecisionsQuery());
   }
 
   @Post('decision')
@@ -35,11 +37,13 @@ export class QualificationController {
           .map((skill) => skill.trim())
           .filter(Boolean);
 
-    const decisionMade = await this.evaluateCandidateUseCase.execute({
-      email: body.email,
-      skills: normalizedSkills,
-      isBlacklisted: !body.safetyVerified,
-    });
+    const decisionMade: QualificationStatus = await this.commandBus.execute(
+      new EvaluateCandidateCommand(
+        body.email,
+        normalizedSkills,
+        !body.safetyVerified,
+      ),
+    );
     return { decisionMade };
   }
 }

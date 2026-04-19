@@ -1,12 +1,12 @@
-import { Controller, Inject } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
+import { CommandBus } from '@nestjs/cqrs';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import {
   SAFETY_VERIFIED,
   SKILLS_READY,
 } from '../../../../../libs/shared/events';
-import { EvaluateCandidateUseCase } from '../../application/use-cases/evaluate-candidate.use-case';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
-import { Logger } from 'winston';
+import { EvaluateCandidateCommand } from '../../application/commands/evaluate-candidate.command';
+import { QualificationLogger } from '../../infrastructure/logging/qualification.logger';
 
 interface SkillsReadyPayload {
   applicationId: string;
@@ -35,8 +35,8 @@ export class QualificationMessageHandler {
   >();
 
   constructor(
-    private readonly evaluateCandidateUseCase: EvaluateCandidateUseCase,
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    private readonly commandBus: CommandBus,
+    private readonly logger: QualificationLogger,
   ) {}
 
   @EventPattern(SKILLS_READY)
@@ -77,15 +77,14 @@ export class QualificationMessageHandler {
     }
 
     current.processed = true;
-    this.logger.info('evaluateCandidate() called after join', {
-      applicationId,
-      email: current.email,
-    });
+    this.logger.evaluateCandidateAfterJoin(applicationId, current.email);
 
-    await this.evaluateCandidateUseCase.execute({
-      email: current.email,
-      skills: current.skills,
-      isBlacklisted: current.isBlacklisted,
-    });
+    await this.commandBus.execute(
+      new EvaluateCandidateCommand(
+        current.email,
+        current.skills,
+        current.isBlacklisted,
+      ),
+    );
   }
 }
