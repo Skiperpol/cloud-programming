@@ -6,7 +6,10 @@ import {
   SubmitApplicationCommand,
   SubmitApplicationCommandResult,
 } from '../commands/submit-application.command';
-import * as applicationEventPublisherPort from '../ports/application-event.publisher.port';
+import {
+  type ApplicationEventPublisherPort,
+  APPLICATION_EVENT_PUBLISHER,
+} from '../ports/application-event.publisher.port';
 import { APPLICATION_FILE_STORAGE_PORT } from '../ports/application-file-storage.port';
 import type { ApplicationFileStoragePort } from '../ports/application-file-storage.port';
 import { FILE_METADATA_LOGGER_PORT } from '../ports/file-metadata-logger.port';
@@ -22,8 +25,8 @@ export class SubmitApplicationHandler implements ICommandHandler<
   constructor(
     @Inject(APPLICATION_REPOSITORY_PORT)
     private readonly applicationRepository: ApplicationRepositoryPort,
-    @Inject(applicationEventPublisherPort.APPLICATION_EVENT_PUBLISHER)
-    private readonly eventPublisher: applicationEventPublisherPort.ApplicationEventPublisherPort,
+    @Inject(APPLICATION_EVENT_PUBLISHER)
+    private readonly eventPublisher: ApplicationEventPublisherPort,
     @Inject(APPLICATION_FILE_STORAGE_PORT)
     private readonly fileStorage: ApplicationFileStoragePort,
     @Inject(FILE_METADATA_LOGGER_PORT)
