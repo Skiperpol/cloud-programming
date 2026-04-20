@@ -7,13 +7,18 @@ import { QualificationDecisionEntity } from './infrastructure/persistence/entiti
 import { EvaluateCandidateHandler } from './application/handlers/evaluate-candidate.handler';
 import { ListQualificationDecisionsHandler } from './application/handlers/list-qualification-decisions.handler';
 import { QUALIFICATION_DECISION_REPOSITORY_PORT } from './application/ports/qualification-decision-repository.port';
+import { QUALIFICATION_JOIN_STORE_PORT } from './application/ports/qualification-join-store.port';
 import { QualificationController } from './interface/http/qualification.controller';
 import { QualificationMessageHandler } from './interface/messaging/qualification.message-handler';
 import { QUALIFICATION_EVENT_PUBLISHER } from './application/ports/qualification-event.publisher.port';
 import { QualificationLogger } from './infrastructure/logging/qualification.logger';
 import { RabbitMqQualificationEventPublisher } from './infrastructure/messaging/rabbitmq-qualification-event.publisher';
 import { TypeOrmQualificationDecisionRepositoryAdapter } from './infrastructure/persistence/entities/typeorm-qualification-decision-repository.adapter';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Redis } from 'ioredis';
+import { RedisQualificationJoinStoreAdapter } from './infrastructure/redis/redis-qualification-join-store.adapter';
+import { QualificationRedisClient } from './infrastructure/redis/qualification-redis.client';
+import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.token';
 
 @Module({
   imports: [
@@ -48,6 +53,17 @@ import { ConfigModule } from '@nestjs/config';
     ListQualificationDecisionsHandler,
     QualificationLogger,
     TypeOrmQualificationDecisionRepositoryAdapter,
+    RedisQualificationJoinStoreAdapter,
+    {
+      provide: QUALIFICATION_REDIS,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService): Redis => {
+        const redisUrl = configService.getOrThrow<string>(
+          'QUALIFICATION_REDIS_URL',
+        );
+        return new QualificationRedisClient(redisUrl);
+      },
+    },
     {
       provide: QUALIFICATION_EVENT_PUBLISHER,
       useClass: RabbitMqQualificationEventPublisher,
@@ -55,6 +71,10 @@ import { ConfigModule } from '@nestjs/config';
     {
       provide: QUALIFICATION_DECISION_REPOSITORY_PORT,
       useExisting: TypeOrmQualificationDecisionRepositoryAdapter,
+    },
+    {
+      provide: QUALIFICATION_JOIN_STORE_PORT,
+      useExisting: RedisQualificationJoinStoreAdapter,
     },
   ],
 })

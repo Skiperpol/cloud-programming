@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Inject } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import {
@@ -6,47 +6,30 @@ import {
   SKILLS_READY,
 } from '../../../../../libs/shared/events';
 import { EvaluateCandidateCommand } from '../../application/commands/evaluate-candidate.command';
+import { QUALIFICATION_JOIN_STORE_PORT } from '../../application/ports/qualification-join-store.port';
+import type { QualificationJoinStorePort } from '../../application/ports/qualification-join-store.port';
+import type {
+  SafetyVerifiedPayload,
+  SkillsReadyPayload,
+} from './contracts/qualification-events.payload';
 import { QualificationLogger } from '../../infrastructure/logging/qualification.logger';
-
-interface SkillsReadyPayload {
-  applicationId: string;
-  email: string;
-  skills: string[];
-}
-
-interface SafetyVerifiedPayload {
-  applicationId: string;
-  email: string;
-  isBlacklisted: boolean;
-}
-
-interface QualificationAggregate {
-  email?: string;
-  skills?: string[];
-  isBlacklisted?: boolean;
-  processed: boolean;
-}
 
 @Controller()
 export class QualificationMessageHandler {
-  private readonly pendingByApplicationId = new Map<
-    string,
-    QualificationAggregate
-  >();
-
   constructor(
     private readonly commandBus: CommandBus,
     private readonly logger: QualificationLogger,
+    @Inject(QUALIFICATION_JOIN_STORE_PORT)
+    private readonly joinStore: QualificationJoinStorePort,
   ) {}
 
   @EventPattern(SKILLS_READY)
   async onSkillsReady(@Payload() payload: SkillsReadyPayload): Promise<void> {
-    const current = this.pendingByApplicationId.get(payload.applicationId) ?? {
-      processed: false,
-    };
-    current.email = payload.email;
-    current.skills = payload.skills;
-    this.pendingByApplicationId.set(payload.applicationId, current);
+    await this.joinStore.upsertSkills(
+      payload.applicationId,
+      payload.email,
+      payload.skills,
+    );
     await this.tryEvaluate(payload.applicationId);
   }
 
@@ -54,37 +37,46 @@ export class QualificationMessageHandler {
   async onSafetyVerified(
     @Payload() payload: SafetyVerifiedPayload,
   ): Promise<void> {
-    const current = this.pendingByApplicationId.get(payload.applicationId) ?? {
-      processed: false,
-    };
-    current.email = payload.email;
-    current.isBlacklisted = payload.isBlacklisted;
-    this.pendingByApplicationId.set(payload.applicationId, current);
+    await this.joinStore.upsertSafety(
+      payload.applicationId,
+      payload.email,
+      payload.isBlacklisted,
+    );
     await this.tryEvaluate(payload.applicationId);
   }
 
   private async tryEvaluate(applicationId: string): Promise<void> {
-    const current = this.pendingByApplicationId.get(applicationId);
-    if (!current || current.processed) {
-      return;
-    }
-    if (
-      !current.email ||
-      !current.skills ||
-      typeof current.isBlacklisted !== 'boolean'
-    ) {
+    const lockAcquired =
+      await this.joinStore.acquireEvaluationLock(applicationId);
+    if (!lockAcquired) {
       return;
     }
 
-    current.processed = true;
-    this.logger.evaluateCandidateAfterJoin(applicationId, current.email);
+    try {
+      const current = await this.joinStore.getAggregate(applicationId);
+      if (!current || current.processed) {
+        return;
+      }
+      if (
+        !current.email ||
+        !current.skills ||
+        typeof current.isBlacklisted !== 'boolean'
+      ) {
+        return;
+      }
 
-    await this.commandBus.execute(
-      new EvaluateCandidateCommand(
-        current.email,
-        current.skills,
-        current.isBlacklisted,
-      ),
-    );
+      await this.joinStore.markProcessed(applicationId);
+      this.logger.evaluateCandidateAfterJoin(applicationId, current.email);
+
+      await this.commandBus.execute(
+        new EvaluateCandidateCommand(
+          current.email,
+          current.skills,
+          current.isBlacklisted,
+        ),
+      );
+    } finally {
+      await this.joinStore.releaseEvaluationLock(applicationId);
+    }
   }
 }
