@@ -67,3 +67,7 @@ Każdy mikroserwis loguje:
 2. wynik połączenia:
    - sukces (`Database connection established`)
    - błąd (`Database connection failed`)
+
+Na konsoli widać to **tylko dla procesów, które faktycznie uruchomiłeś** (np. `npm run start:dev` odpala wyłącznie gateway). Żeby zobaczyć logi Postgresa dla wszystkich serwisów, użyj `npm run start:all` albo osobnych terminali z `npx nest start <nazwa-serwisu> --watch`.
+
+Dodatkowo każdy start zapisuje skrót zdarzeń do **`logs/db-connection.log`** (wspólny plik dla wszystkich procesów — wygodne przy `start:all`). `qualification-service` loguje też Redis (`qualification-service:redis` + wpisy `redis` w tym pliku).

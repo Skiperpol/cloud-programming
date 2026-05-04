@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -17,6 +17,7 @@ import { QualificationLogger } from './infrastructure/logging/qualification.logg
 import { RabbitMqQualificationEventPublisher } from './infrastructure/messaging/rabbitmq-qualification-event.publisher';
 import { TypeOrmQualificationDecisionRepositoryAdapter } from './infrastructure/persistence/entities/typeorm-qualification-decision-repository.adapter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { appendDbBootLog } from '../../../libs/shared/database/db-boot-log';
 import { Redis } from 'ioredis';
 import { RedisQualificationJoinStoreAdapter } from './infrastructure/redis/redis-qualification-join-store.adapter';
 import { QualificationRedisClient } from './infrastructure/redis/qualification-redis.client';
@@ -57,11 +58,29 @@ import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.
     {
       provide: QUALIFICATION_REDIS,
       inject: [ConfigService],
-      useFactory: (configService: ConfigService): Redis => {
+      useFactory: async (configService: ConfigService): Promise<Redis> => {
+        const redisLog = new Logger('qualification-service:redis');
+        redisLog.log('Starting Redis connection');
+        appendDbBootLog('qualification-service', 'redis', 'connecting');
         const redisUrl = configService.getOrThrow<string>(
           'database.qualificationJoinStore.url',
         );
-        return new QualificationRedisClient(redisUrl);
+        const client = new QualificationRedisClient(redisUrl);
+        try {
+          await client.ping();
+          redisLog.log('Redis connection established');
+          appendDbBootLog('qualification-service', 'redis', 'connected');
+        } catch (error) {
+          redisLog.error('Redis connection failed', error);
+          appendDbBootLog(
+            'qualification-service',
+            'redis',
+            'failed',
+            error instanceof Error ? error.message : String(error),
+          );
+          throw error;
+        }
+        return client;
       },
     },
     {
