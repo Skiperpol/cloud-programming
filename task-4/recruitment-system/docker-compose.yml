@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  gateway-db:
+    image: postgres:16
+    container_name: gateway-db
+    environment:
+      POSTGRES_DB: gateway_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5433:5432'
+
+  candidate-db:
+    image: postgres:16
+    container_name: candidate-db
+    environment:
+      POSTGRES_DB: candidate_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5434:5432'
+
+  parser-db:
+    image: postgres:16
+    container_name: parser-db
+    environment:
+      POSTGRES_DB: parser_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5435:5432'
+
+  blacklist-db:
+    image: postgres:16
+    container_name: blacklist-db
+    environment:
+      POSTGRES_DB: blacklist_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5436:5432'
+
+  qualification-db:
+    image: postgres:16
+    container_name: qualification-db
+    environment:
+      POSTGRES_DB: qualification_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5437:5432'
+
+  notification-db:
+    image: postgres:16
+    container_name: notification-db
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: recruitment
+      POSTGRES_PASSWORD: recruitment
+    ports:
+      - '5438:5432'
