@@ -19,6 +19,7 @@ export function createTypeOrmConfig(
           url,
           autoLoadEntities: true,
           synchronize: true,
+          ssl: { rejectUnauthorized: false },
         };
       } catch (error) {
         dbLogger.error('Database connection failed at config stage', error);
