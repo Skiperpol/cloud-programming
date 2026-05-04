@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { DownloadApplicationFileHandler } from './application/handlers/download-application-file.handler';
 import { ListApplicationsHandler } from './application/handlers/list-applications.handler';
@@ -26,14 +28,10 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('gateway-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.GATEWAY_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(createTypeOrmConfig('gateway-service', 'gateway')),
     TypeOrmModule.forFeature([GatewayApplicationEntity]),
     ClientsModule.register([
       {

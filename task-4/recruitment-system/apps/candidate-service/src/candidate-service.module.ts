@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { CreateProfileHandler } from './application/handlers/create-profile.handler';
 import { ListCandidatesHandler } from './application/handlers/list-candidates.handler';
@@ -12,7 +15,6 @@ import { TypeOrmCandidateReadAdapter } from './infrastructure/persistence/typeor
 import { TypeOrmCandidateRepositoryAdapter } from './infrastructure/persistence/typeorm-candidate-repository.adapter';
 import { CandidateMessageHandler } from './interface/messaging/candidate.message-handler';
 import { CandidateController } from './interface/http/candidate.controller';
-import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -20,14 +22,12 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('candidate-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.CANDIDATE_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('candidate-service', 'candidate'),
+    ),
     TypeOrmModule.forFeature([CandidateEntity]),
   ],
   controllers: [CandidateMessageHandler, CandidateController],

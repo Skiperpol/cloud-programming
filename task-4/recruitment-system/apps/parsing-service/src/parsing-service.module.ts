@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { ListParsedDocumentsHandler } from './application/handlers/list-parsed-documents.handler';
 import { ParseDocumentHandler } from './application/handlers/parse-document.handler';
@@ -15,7 +18,6 @@ import { TypeOrmParsedDocumentReadAdapter } from './infrastructure/persistence/t
 import { TypeOrmParsedDocumentRepositoryAdapter } from './infrastructure/persistence/typeorm-parsed-document-repository.adapter';
 import { ParsingMessageHandler } from './interface/messaging/parsing.message-handler';
 import { ParsingController } from './interface/http/parsing.controller';
-import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -23,14 +25,10 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('parsing-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.PARSER_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(createTypeOrmConfig('parsing-service', 'parser')),
     TypeOrmModule.forFeature([ParsedDocumentEntity]),
     ClientsModule.register([
       {

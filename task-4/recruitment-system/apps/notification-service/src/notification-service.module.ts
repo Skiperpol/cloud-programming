@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { NotificationEntity } from './infrastructure/persistence/notification.entity';
 import { GetNotificationByEmailHandler } from './application/handlers/get-notification-by-email.handler';
@@ -11,7 +14,6 @@ import { NotificationLogger } from './infrastructure/logging/notification.logger
 import { TypeOrmNotificationRepositoryAdapter } from './infrastructure/persistence/typeorm-notification-repository.adapter';
 import { NotificationMessageHandler } from './interface/messaging/notification.message-handler';
 import { NotificationController } from './interface/http/notification.controller';
-import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -19,14 +21,12 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('notification-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.NOTIFICATION_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('notification-service', 'notification'),
+    ),
     TypeOrmModule.forFeature([NotificationEntity]),
   ],
   controllers: [NotificationMessageHandler, NotificationController],

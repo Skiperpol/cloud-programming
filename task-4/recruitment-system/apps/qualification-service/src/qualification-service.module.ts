@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { QualificationDecisionEntity } from './infrastructure/persistence/entities/qualification-decision.entity';
 import { EvaluateCandidateHandler } from './application/handlers/evaluate-candidate.handler';
@@ -26,14 +28,12 @@ import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('qualification-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.QUALIFICATION_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('qualification-service', 'qualification'),
+    ),
     TypeOrmModule.forFeature([QualificationDecisionEntity]),
     ClientsModule.register([
       {
@@ -59,7 +59,7 @@ import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.
       inject: [ConfigService],
       useFactory: (configService: ConfigService): Redis => {
         const redisUrl = configService.getOrThrow<string>(
-          'QUALIFICATION_REDIS_URL',
+          'database.qualificationJoinStore.url',
         );
         return new QualificationRedisClient(redisUrl);
       },

@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseConfig } from '../../../libs/shared/database/database.config';
+import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
 import { WinstonLoggerModule } from '../../../libs/shared/logging/winston-logger.module';
 import { CheckBlacklistStatusHandler } from './application/handlers/check-blacklist-status.handler';
 import { ListBlacklistEntriesHandler } from './application/handlers/list-blacklist-entries.handler';
@@ -13,7 +16,6 @@ import { BlacklistEntryEntity } from './infrastructure/persistence/blacklist-ent
 import { TypeOrmBlacklistReadAdapter } from './infrastructure/persistence/typeorm-blacklist-read.adapter';
 import { VerificationMessageHandler } from './interface/messaging/verification.message-handler';
 import { VerificationController } from './interface/http/verification.controller';
-import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -21,14 +23,12 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('verification-service'),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.BLACKLIST_DB_URL,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('verification-service', 'verification'),
+    ),
     TypeOrmModule.forFeature([BlacklistEntryEntity]),
     ClientsModule.register([
       {
