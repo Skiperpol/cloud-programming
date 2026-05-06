@@ -34,7 +34,9 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
       load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('gateway-service'),
-    TypeOrmModule.forRootAsync(createTypeOrmConfig('gateway-service', 'gateway')),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('gateway-service', 'gateway'),
+    ),
     TypeOrmModule.forFeature([GatewayApplicationEntity]),
     ClientsModule.register([
       {
