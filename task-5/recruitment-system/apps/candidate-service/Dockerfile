@@ -11,6 +11,13 @@ COPY libs ./libs
 
 RUN npx nest build candidate-service
 
+FROM node:20-alpine AS production-deps
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 FROM node:20-alpine AS runtime
 
 WORKDIR /app
