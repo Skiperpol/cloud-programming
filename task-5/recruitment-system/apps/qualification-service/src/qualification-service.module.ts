@@ -1,6 +1,7 @@
 import { Logger, Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -11,6 +12,7 @@ import { ListQualificationDecisionsHandler } from './application/handlers/list-q
 import { QUALIFICATION_DECISION_REPOSITORY_PORT } from './application/ports/qualification-decision-repository.port';
 import { QUALIFICATION_JOIN_STORE_PORT } from './application/ports/qualification-join-store.port';
 import { QualificationController } from './interface/http/qualification.controller';
+import { HealthController } from './interface/http/health.controller';
 import { QualificationMessageHandler } from './interface/messaging/qualification.message-handler';
 import { QUALIFICATION_EVENT_PUBLISHER } from './application/ports/qualification-event.publisher.port';
 import { QualificationLogger } from './infrastructure/logging/qualification.logger';
@@ -26,6 +28,7 @@ import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -48,7 +51,11 @@ import { QUALIFICATION_REDIS } from './infrastructure/redis/qualification-redis.
       },
     ]),
   ],
-  controllers: [QualificationController, QualificationMessageHandler],
+  controllers: [
+    QualificationController,
+    QualificationMessageHandler,
+    HealthController,
+  ],
   providers: [
     EvaluateCandidateHandler,
     ListQualificationDecisionsHandler,

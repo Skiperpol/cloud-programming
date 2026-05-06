@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -13,12 +14,14 @@ import { CandidateEntity } from './infrastructure/persistence/candidate.entity';
 import { CandidateLogger } from './infrastructure/logging/candidate.logger';
 import { TypeOrmCandidateReadAdapter } from './infrastructure/persistence/typeorm-candidate-read.adapter';
 import { TypeOrmCandidateRepositoryAdapter } from './infrastructure/persistence/typeorm-candidate-repository.adapter';
+import { HealthController } from './interface/http/health.controller';
 import { CandidateMessageHandler } from './interface/messaging/candidate.message-handler';
 import { CandidateController } from './interface/http/candidate.controller';
 
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -30,7 +33,7 @@ import { CandidateController } from './interface/http/candidate.controller';
     ),
     TypeOrmModule.forFeature([CandidateEntity]),
   ],
-  controllers: [CandidateMessageHandler, CandidateController],
+  controllers: [CandidateMessageHandler, CandidateController, HealthController],
   providers: [
     CreateProfileHandler,
     ListCandidatesHandler,

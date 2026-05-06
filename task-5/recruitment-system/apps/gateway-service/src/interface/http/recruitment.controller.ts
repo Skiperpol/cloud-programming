@@ -79,14 +79,6 @@ export class RecruitmentController {
     return new StreamableFile(stream);
   }
 
-  @Get('health')
-  healthCheck(): { status: string; service: string } {
-    return {
-      status: 'ok',
-      service: 'gateway-service',
-    };
-  }
-
   @Get('applications')
   listApplications(): Promise<ApplicationDto[]> {
     return this.queryBus.execute(new ListApplicationsQuery());

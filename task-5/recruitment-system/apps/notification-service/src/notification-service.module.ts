@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -12,12 +13,14 @@ import { NOTIFICATION_REPOSITORY_PORT } from './application/ports/notification-r
 import { SaveNotificationHandler } from './application/handlers/save-notification.handler';
 import { NotificationLogger } from './infrastructure/logging/notification.logger';
 import { TypeOrmNotificationRepositoryAdapter } from './infrastructure/persistence/typeorm-notification-repository.adapter';
+import { HealthController } from './interface/http/health.controller';
 import { NotificationMessageHandler } from './interface/messaging/notification.message-handler';
 import { NotificationController } from './interface/http/notification.controller';
 
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -29,7 +32,11 @@ import { NotificationController } from './interface/http/notification.controller
     ),
     TypeOrmModule.forFeature([NotificationEntity]),
   ],
-  controllers: [NotificationMessageHandler, NotificationController],
+  controllers: [
+    NotificationMessageHandler,
+    NotificationController,
+    HealthController,
+  ],
   providers: [
     SaveNotificationHandler,
     ListNotificationsHandler,

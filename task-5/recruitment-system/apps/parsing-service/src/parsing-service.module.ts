@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -16,12 +17,14 @@ import { RabbitMqSkillsEventPublisher } from './infrastructure/messaging/rabbitm
 import { ParsingLogger } from './infrastructure/logging/parsing.logger';
 import { TypeOrmParsedDocumentReadAdapter } from './infrastructure/persistence/typeorm-parsed-document-read.adapter';
 import { TypeOrmParsedDocumentRepositoryAdapter } from './infrastructure/persistence/typeorm-parsed-document-repository.adapter';
+import { HealthController } from './interface/http/health.controller';
 import { ParsingMessageHandler } from './interface/messaging/parsing.message-handler';
 import { ParsingController } from './interface/http/parsing.controller';
 
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -42,7 +45,7 @@ import { ParsingController } from './interface/http/parsing.controller';
       },
     ]),
   ],
-  controllers: [ParsingMessageHandler, ParsingController],
+  controllers: [ParsingMessageHandler, ParsingController, HealthController],
   providers: [
     ParseDocumentHandler,
     ListParsedDocumentsHandler,

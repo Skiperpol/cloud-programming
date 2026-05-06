@@ -13,14 +13,6 @@ export class QualificationController {
     private readonly queryBus: QueryBus,
   ) {}
 
-  @Get('health')
-  healthCheck(): { status: string; service: string } {
-    return {
-      status: 'ok',
-      service: 'qualification-service',
-    };
-  }
-
   @Get('decisions')
   list(): Promise<QualificationDecisionDto[]> {
     return this.queryBus.execute(new ListQualificationDecisionsQuery());

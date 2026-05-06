@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -14,12 +15,14 @@ import { VerificationLogger } from './infrastructure/logging/verification.logger
 import { RabbitMqSafetyEventPublisher } from './infrastructure/messaging/rabbitmq-safety-event.publisher';
 import { BlacklistEntryEntity } from './infrastructure/persistence/blacklist-entry.entity';
 import { TypeOrmBlacklistReadAdapter } from './infrastructure/persistence/typeorm-blacklist-read.adapter';
+import { HealthController } from './interface/http/health.controller';
 import { VerificationMessageHandler } from './interface/messaging/verification.message-handler';
 import { VerificationController } from './interface/http/verification.controller';
 
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -42,7 +45,11 @@ import { VerificationController } from './interface/http/verification.controller
       },
     ]),
   ],
-  controllers: [VerificationMessageHandler, VerificationController],
+  controllers: [
+    VerificationMessageHandler,
+    VerificationController,
+    HealthController,
+  ],
   providers: [
     CheckBlacklistStatusHandler,
     ListBlacklistEntriesHandler,

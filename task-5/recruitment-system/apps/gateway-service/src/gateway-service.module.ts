@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig } from '../../../libs/shared/database/database.config';
 import { createTypeOrmConfig } from '../../../libs/shared/database/typeorm.config';
@@ -20,11 +21,13 @@ import { GatewayApplicationEntity } from './infrastructure/persistence/gateway-a
 import { TypeOrmApplicationReadAdapter } from './infrastructure/persistence/typeorm-application-read.adapter';
 import { TypeOrmApplicationRepositoryAdapter } from './infrastructure/persistence/typeorm-application-repository.adapter';
 import { S3ApplicationFileStorage } from './infrastructure/storage/s3-application-file.storage';
+import { HealthController } from './interface/http/health.controller';
 import { RecruitmentController } from './interface/http/recruitment.controller';
 
 @Module({
   imports: [
     CqrsModule,
+    TerminusModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -63,7 +66,7 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
       },
     ]),
   ],
-  controllers: [RecruitmentController],
+  controllers: [RecruitmentController, HealthController],
   providers: [
     SubmitApplicationHandler,
     ListApplicationsHandler,
