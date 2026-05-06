@@ -5,9 +5,6 @@ x-nest-defaults: &nest-defaults
     context: .
   networks:
     - recruitment-network
-  depends_on:
-    rabbitmq:
-      condition: service_healthy
   logging:
     driver: 'json-file'
     options:
@@ -15,18 +12,17 @@ x-nest-defaults: &nest-defaults
       max-file: '3'
 
 services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: recruitment-rabbitmq
+  redis:
+    image: redis:7-alpine
+    container_name: recruitment-redis
     healthcheck:
-      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
     ports:
-      - '5672:5672'
-      - '15672:15672'
+      - '6380:6379'
     networks:
       - recruitment-network
 
@@ -39,13 +35,13 @@ services:
     container_name: gateway-service
     environment:
       PORT: 3000
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3000:3000'
 
@@ -58,13 +54,13 @@ services:
     container_name: candidate-service
     environment:
       PORT: 3001
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3001/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3001:3001'
 
@@ -77,13 +73,13 @@ services:
     container_name: parsing-service
     environment:
       PORT: 3002
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3002/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3002:3002'
 
@@ -96,18 +92,21 @@ services:
     container_name: verification-service
     environment:
       PORT: 3003
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3003/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3003:3003'
 
   qualification-service:
     <<: *nest-defaults
+    depends_on:
+      redis:
+        condition: service_healthy
     build:
       context: .
       dockerfile: apps/qualification-service/Dockerfile
@@ -115,13 +114,16 @@ services:
     container_name: qualification-service
     environment:
       PORT: 3004
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      QUALIFICATION_REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3004/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3004:3004'
 
@@ -134,13 +136,13 @@ services:
     container_name: notification-service
     environment:
       PORT: 3005
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3005/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 10s
     ports:
       - '3005:3005'
 

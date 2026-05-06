@@ -5,34 +5,34 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start gateway-service --watch
+    command: sh -c "npm install && npx nest start gateway-service --watch"
 
   candidate-service:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start candidate-service --watch
+    command: sh -c "npm install && npx nest start candidate-service --watch"
 
   parsing-service:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start parsing-service --watch
+    command: sh -c "npm install && npx nest start parsing-service --watch"
 
   verification-service:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start verification-service --watch
+    command: sh -c "npm install && npx nest start verification-service --watch"
 
   qualification-service:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start qualification-service --watch
+    command: sh -c "npm install && npx nest start qualification-service --watch"
 
   notification-service:
     volumes:
       - .:/app
       - /app/node_modules
-    command: npx nest start notification-service --watch
+    command: sh -c "npm install && npx nest start notification-service --watch"
