@@ -68,7 +68,7 @@ provider "postgresql" {
 }
 
 resource "postgresql_database" "service_db" {
-  for_each = local.db_names
+  for_each = var.create_service_databases ? local.db_names : toset([])
 
   name  = each.value
   owner = var.db_master_username

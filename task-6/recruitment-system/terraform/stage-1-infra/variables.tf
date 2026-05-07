@@ -45,3 +45,15 @@ variable "create_subnet_and_param_groups" {
   description = "Create DB/Redis subnet and Redis parameter groups instead of reusing existing ones."
   default     = false
 }
+
+variable "create_service_databases" {
+  type        = bool
+  description = "Create service databases inside PostgreSQL instance."
+  default     = false
+}
+
+variable "create_redis_replication_group" {
+  type        = bool
+  description = "Create Redis replication group instead of reusing existing one."
+  default     = false
+}

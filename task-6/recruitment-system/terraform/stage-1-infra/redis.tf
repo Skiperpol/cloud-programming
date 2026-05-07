@@ -40,6 +40,7 @@ data "aws_elasticache_subnet_group" "main" {
 }
 
 resource "aws_elasticache_replication_group" "qualification_redis" {
+  count                = var.create_redis_replication_group ? 1 : 0
   replication_group_id = "${var.project_name}-redis"
   description          = "Redis for qualification service"
 
@@ -61,4 +62,9 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   lifecycle {
     ignore_changes = [auth_token, transit_encryption_enabled]
   }
+}
+
+data "aws_elasticache_replication_group" "qualification_redis" {
+  count                = var.create_redis_replication_group ? 0 : 1
+  replication_group_id = "${var.project_name}-redis"
 }
