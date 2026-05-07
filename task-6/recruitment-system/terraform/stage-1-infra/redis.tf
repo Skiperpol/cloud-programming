@@ -3,6 +3,30 @@ resource "aws_elasticache_parameter_group" "redis7" {
   family = "redis7"
 }
 
+resource "aws_security_group" "redis" {
+  name_prefix = "${var.project_name}-redis-"
+  description = "Allow Redis access for qualification service"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = var.redis_allowed_cidrs
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-redis-sg"
+  }
+}
+
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.project_name}-redis-subnets"
   subnet_ids = data.aws_subnets.default.ids
@@ -12,11 +36,9 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   replication_group_id = "${var.project_name}-redis"
   description          = "Redis for qualification service"
 
-  # Wydajność i koszty
   node_type          = var.redis_node_type
   num_cache_clusters = 1
 
-  # Silnik i konfiguracja
   engine               = "redis"
   engine_version       = "7.1"
   port                 = 6379
@@ -24,7 +46,6 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   subnet_group_name    = aws_elasticache_subnet_group.main.name
   security_group_ids   = [aws_security_group.redis.id]
 
-  # Oszczędności i wygoda na studia
   at_rest_encryption_enabled = false
   transit_encryption_enabled = false
   apply_immediately          = true

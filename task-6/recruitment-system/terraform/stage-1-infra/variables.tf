@@ -33,3 +33,9 @@ variable "redis_node_type" {
   description = "ElastiCache node type."
   default     = "cache.t4g.micro"
 }
+
+variable "db_master_password" {
+  description = "Main password to RDS database"
+  type        = string
+  sensitive   = true
+}
