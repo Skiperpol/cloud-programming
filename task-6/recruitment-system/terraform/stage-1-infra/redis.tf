@@ -1,4 +1,5 @@
 resource "aws_elasticache_parameter_group" "redis7" {
+  count  = var.create_subnet_and_param_groups ? 1 : 0
   name   = "${var.project_name}-redis7-params"
   family = "redis7"
 }
@@ -28,8 +29,14 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_elasticache_subnet_group" "main" {
+  count      = var.create_subnet_and_param_groups ? 1 : 0
   name       = "${var.project_name}-redis-subnets"
   subnet_ids = data.aws_subnets.default.ids
+}
+
+data "aws_elasticache_subnet_group" "main" {
+  count = var.create_subnet_and_param_groups ? 0 : 1
+  name  = "${var.project_name}-redis-subnets"
 }
 
 resource "aws_elasticache_replication_group" "qualification_redis" {
@@ -42,8 +49,8 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   engine               = "redis"
   engine_version       = "7.1"
   port                 = 6379
-  parameter_group_name = aws_elasticache_parameter_group.redis7.name
-  subnet_group_name    = aws_elasticache_subnet_group.main.name
+  parameter_group_name = var.create_subnet_and_param_groups ? aws_elasticache_parameter_group.redis7[0].name : "${var.project_name}-redis7-params"
+  subnet_group_name    = var.create_subnet_and_param_groups ? aws_elasticache_subnet_group.main[0].name : data.aws_elasticache_subnet_group.main[0].name
   security_group_ids   = [aws_security_group.redis.id]
 
   at_rest_encryption_enabled = false
@@ -52,6 +59,6 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   snapshot_retention_limit   = 0
 
   lifecycle {
-    ignore_changes = [auth_token]
+    ignore_changes = [auth_token, transit_encryption_enabled]
   }
 }

@@ -23,12 +23,18 @@ resource "aws_security_group" "rds" {
 }
 
 resource "aws_db_subnet_group" "main" {
+  count      = var.create_subnet_and_param_groups ? 1 : 0
   name       = "${var.project_name}-db-subnets"
   subnet_ids = data.aws_subnets.default.ids
 
   tags = {
     Name = "${var.project_name}-db-subnets"
   }
+}
+
+data "aws_db_subnet_group" "main" {
+  count = var.create_subnet_and_param_groups ? 0 : 1
+  name  = "${var.project_name}-db-subnets"
 }
 
 resource "aws_db_instance" "main" {
@@ -43,7 +49,7 @@ resource "aws_db_instance" "main" {
   username = var.db_master_username
   password = var.db_master_password
 
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  db_subnet_group_name   = var.create_subnet_and_param_groups ? aws_db_subnet_group.main[0].name : data.aws_db_subnet_group.main[0].name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   publicly_accessible     = true

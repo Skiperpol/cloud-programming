@@ -39,3 +39,9 @@ variable "db_master_password" {
   type        = string
   sensitive   = true
 }
+
+variable "create_subnet_and_param_groups" {
+  type        = bool
+  description = "Create DB/Redis subnet and Redis parameter groups instead of reusing existing ones."
+  default     = false
+}
