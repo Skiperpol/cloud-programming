@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "terraform/**"
+      - "task-6/recruitment-system/terraform/**"
       - ".github/workflows/deploy.yml"
       - ".github/workflows/destroy.yml"
   workflow_dispatch:
@@ -35,15 +35,15 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init (Stage 1)
-        working-directory: terraform/stage-1-infra
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform init
 
       - name: Terraform Plan (Stage 1)
-        working-directory: terraform/stage-1-infra
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform plan -input=false
 
       - name: Terraform Apply (Stage 1)
-        working-directory: terraform/stage-1-infra
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform apply -auto-approve -input=false
 
       - name: Configure AWS Credentials
@@ -78,7 +78,7 @@ jobs:
             SHORT_NAME="${SERVICE%-service}"
             IMAGE_URI="$ECR_REGISTRY/$SERVICE:$IMAGE_TAG"
 
-            docker build -f "apps/$SERVICE/Dockerfile.prod" -t "$IMAGE_URI" .
+            docker build -f "task-6/recruitment-system/apps/$SERVICE/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
             docker push "$IMAGE_URI"
 
             IMAGES_JSON="$IMAGES_JSON\"$SHORT_NAME\":\"$IMAGE_URI\","
@@ -88,13 +88,13 @@ jobs:
           echo "TF_VAR_images=$IMAGES_JSON" >> "$GITHUB_ENV"
 
       - name: Terraform Init (Stage 2)
-        working-directory: terraform/stage-2-app
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform init
 
       - name: Terraform Plan (Stage 2)
-        working-directory: terraform/stage-2-app
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform plan -input=false
 
       - name: Terraform Apply (Stage 2)
-        working-directory: terraform/stage-2-app
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform apply -auto-approve -input=false

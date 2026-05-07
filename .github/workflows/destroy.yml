@@ -25,17 +25,17 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init (Stage 1)
-        working-directory: terraform/stage-1-infra
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform init
 
       - name: Terraform Init (Stage 2)
-        working-directory: terraform/stage-2-app
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform init
 
       - name: Terraform Destroy (Stage 2)
-        working-directory: terraform/stage-2-app
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform destroy -auto-approve -input=false
 
       - name: Terraform Destroy (Stage 1)
-        working-directory: terraform/stage-1-infra
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform destroy -auto-approve -input=false
