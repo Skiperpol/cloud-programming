@@ -50,4 +50,8 @@ resource "aws_elasticache_replication_group" "qualification_redis" {
   transit_encryption_enabled = false
   apply_immediately          = true
   snapshot_retention_limit   = 0
+
+  lifecycle {
+    ignore_changes = [auth_token]
+  }
 }
