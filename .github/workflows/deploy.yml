@@ -31,6 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -44,12 +51,48 @@ jobs:
           PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
         run: |
           PROJECT="${PROJECT_NAME:-recruitment-system}"
+          import_if_exists() {
+            local ADDRESS="$1"
+            local TYPE="$2"
+            local ID="$3"
+            local EXISTS=1
 
-          terraform import aws_db_subnet_group.main "${PROJECT}-db-subnets" || true
-          terraform import aws_db_instance.main "${PROJECT}-postgres" || true
-          terraform import aws_elasticache_parameter_group.redis7 "${PROJECT}-redis7-params" || true
-          terraform import aws_elasticache_subnet_group.main "${PROJECT}-redis-subnets" || true
-          terraform import aws_elasticache_replication_group.qualification_redis "${PROJECT}-redis" || true
+            if terraform state list | rg -x "$ADDRESS" >/dev/null 2>&1; then
+              echo "Already in state: $ADDRESS"
+              return 0
+            fi
+
+            case "$TYPE" in
+              rds-subnet-group)
+                aws rds describe-db-subnet-groups --db-subnet-group-name "$ID" >/dev/null 2>&1 || EXISTS=0
+                ;;
+              rds-instance)
+                aws rds describe-db-instances --db-instance-identifier "$ID" >/dev/null 2>&1 || EXISTS=0
+                ;;
+              elasticache-parameter-group)
+                aws elasticache describe-cache-parameter-groups --cache-parameter-group-name "$ID" >/dev/null 2>&1 || EXISTS=0
+                ;;
+              elasticache-subnet-group)
+                aws elasticache describe-cache-subnet-groups --cache-subnet-group-name "$ID" >/dev/null 2>&1 || EXISTS=0
+                ;;
+              elasticache-replication-group)
+                aws elasticache describe-replication-groups --replication-group-id "$ID" >/dev/null 2>&1 || EXISTS=0
+                ;;
+            esac
+
+            if [ "$EXISTS" -eq 1 ]; then
+              echo "Importing: $ADDRESS <= $ID"
+              terraform import -input=false "$ADDRESS" "$ID"
+            else
+              echo "Not found in AWS, skip import: $ID"
+            fi
+          }
+
+          import_if_exists "aws_db_subnet_group.main" "rds-subnet-group" "${PROJECT}-db-subnets"
+          import_if_exists "aws_db_instance.main" "rds-instance" "${PROJECT}-postgres"
+          import_if_exists "aws_elasticache_parameter_group.redis7" "elasticache-parameter-group" "${PROJECT}-redis7-params"
+          import_if_exists "aws_elasticache_subnet_group.main" "elasticache-subnet-group" "${PROJECT}-redis-subnets"
+          import_if_exists "aws_elasticache_replication_group.qualification_redis" "elasticache-replication-group" "${PROJECT}-redis"
 
       - name: Terraform Plan (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
@@ -58,13 +101,6 @@ jobs:
       - name: Terraform Apply (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform apply -auto-approve -input=false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
