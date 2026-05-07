@@ -1,0 +1,41 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy:
+    name: Terraform Destroy (Stage 2 + Stage 1)
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init (Stage 1)
+        working-directory: terraform/stage-1-infra
+        run: terraform init
+
+      - name: Terraform Init (Stage 2)
+        working-directory: terraform/stage-2-app
+        run: terraform init
+
+      - name: Terraform Destroy (Stage 2)
+        working-directory: terraform/stage-2-app
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Terraform Destroy (Stage 1)
+        working-directory: terraform/stage-1-infra
+        run: terraform destroy -auto-approve -input=false
