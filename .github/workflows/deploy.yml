@@ -38,6 +38,19 @@ jobs:
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform init
 
+      - name: Import existing Stage 1 resources (if present)
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+
+          terraform import aws_db_subnet_group.main "${PROJECT}-db-subnets" || true
+          terraform import aws_db_instance.main "${PROJECT}-postgres" || true
+          terraform import aws_elasticache_parameter_group.redis7 "${PROJECT}-redis7-params" || true
+          terraform import aws_elasticache_subnet_group.main "${PROJECT}-redis-subnets" || true
+          terraform import aws_elasticache_replication_group.qualification_redis "${PROJECT}-redis" || true
+
       - name: Terraform Plan (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform plan -input=false
