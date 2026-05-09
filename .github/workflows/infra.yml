@@ -1,0 +1,61 @@
+name: Infra Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "task-6/recruitment-system/terraform/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    name: Terraform (Stage 1 + Stage 2)
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+      TF_VAR_rabbitmq_url: ${{ secrets.RABBITMQ_URL }}
+      TF_VAR_aws_s3_bucket: ${{ secrets.AWS_S3_BUCKET }}
+      TF_VAR_stage1_state_backend: local
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init (Stage 1)
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        run: terraform init
+
+      - name: Terraform Plan (Stage 1)
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        run: terraform plan -input=false
+
+      - name: Terraform Apply (Stage 1)
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        run: terraform apply -auto-approve -input=false
+
+      - name: Terraform Init (Stage 2)
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        run: terraform init
+
+      - name: Terraform Plan (Stage 2)
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        run: terraform plan -input=false
+
+      - name: Terraform Apply (Stage 2)
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        run: terraform apply -auto-approve -input=false

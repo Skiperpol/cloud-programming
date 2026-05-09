@@ -1,0 +1,149 @@
+name: App Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "task-6/recruitment-system/apps/**"
+      - ".github/workflows/app-deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-apps:
+    name: Build/Push changed services and redeploy ECS
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed services
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            gateway:
+              - 'task-6/recruitment-system/apps/gateway-service/**'
+            candidate:
+              - 'task-6/recruitment-system/apps/candidate-service/**'
+            parsing:
+              - 'task-6/recruitment-system/apps/parsing-service/**'
+            verification:
+              - 'task-6/recruitment-system/apps/verification-service/**'
+            qualification:
+              - 'task-6/recruitment-system/apps/qualification-service/**'
+            notification:
+              - 'task-6/recruitment-system/apps/notification-service/**'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build/Push gateway
+        if: steps.changes.outputs.gateway == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-gateway:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/gateway-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Build/Push candidate
+        if: steps.changes.outputs.candidate == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-candidate:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/candidate-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Build/Push parsing
+        if: steps.changes.outputs.parsing == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-parsing:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/parsing-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Build/Push verification
+        if: steps.changes.outputs.verification == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-verification:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/verification-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Build/Push qualification
+        if: steps.changes.outputs.qualification == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-qualification:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/qualification-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Build/Push notification
+        if: steps.changes.outputs.notification == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          IMAGE_URI="$ECR_REGISTRY/$PROJECT-notification:latest"
+          docker buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --load -f "task-6/recruitment-system/apps/notification-service/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
+          docker push "$IMAGE_URI"
+
+      - name: Force new deployment for changed services
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+          GATEWAY_CHANGED: ${{ steps.changes.outputs.gateway }}
+          CANDIDATE_CHANGED: ${{ steps.changes.outputs.candidate }}
+          PARSING_CHANGED: ${{ steps.changes.outputs.parsing }}
+          VERIFICATION_CHANGED: ${{ steps.changes.outputs.verification }}
+          QUALIFICATION_CHANGED: ${{ steps.changes.outputs.qualification }}
+          NOTIFICATION_CHANGED: ${{ steps.changes.outputs.notification }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          CLUSTER="${PROJECT}-cluster"
+
+          update_if_changed() {
+            local NAME="$1"
+            local CHANGED="$2"
+            if [ "$CHANGED" = "true" ]; then
+              aws ecs update-service --cluster "$CLUSTER" --service "${PROJECT}-${NAME}" --force-new-deployment >/dev/null
+            fi
+          }
+
+          update_if_changed gateway "$GATEWAY_CHANGED"
+          update_if_changed candidate "$CANDIDATE_CHANGED"
+          update_if_changed parsing "$PARSING_CHANGED"
+          update_if_changed verification "$VERIFICATION_CHANGED"
+          update_if_changed qualification "$QUALIFICATION_CHANGED"
+          update_if_changed notification "$NOTIFICATION_CHANGED"
