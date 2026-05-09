@@ -76,4 +76,5 @@ jobs:
 
       - name: Terraform Apply (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
-        run: terraform apply -auto-approve -input=false
+        # Limit parallelism: concurrent CreateService calls can trigger ECS "not idempotent" errors.
+        run: terraform apply -auto-approve -input=false -parallelism=2

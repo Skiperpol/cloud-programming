@@ -45,3 +45,38 @@ import {
   to = aws_ecr_repository.services["notification"]
   id = "${var.project_name}-notification"
 }
+
+import {
+  to = aws_ecs_cluster.this
+  id = "${var.project_name}-cluster"
+}
+
+import {
+  to = aws_ecs_service.service["gateway"]
+  id = "${var.project_name}-cluster/${var.project_name}-gateway"
+}
+
+import {
+  to = aws_ecs_service.service["candidate"]
+  id = "${var.project_name}-cluster/${var.project_name}-candidate"
+}
+
+import {
+  to = aws_ecs_service.service["parsing"]
+  id = "${var.project_name}-cluster/${var.project_name}-parsing"
+}
+
+import {
+  to = aws_ecs_service.service["verification"]
+  id = "${var.project_name}-cluster/${var.project_name}-verification"
+}
+
+import {
+  to = aws_ecs_service.service["qualification"]
+  id = "${var.project_name}-cluster/${var.project_name}-qualification"
+}
+
+import {
+  to = aws_ecs_service.service["notification"]
+  id = "${var.project_name}-cluster/${var.project_name}-notification"
+}
