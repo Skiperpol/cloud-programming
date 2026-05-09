@@ -47,6 +47,11 @@ import {
 }
 
 import {
+  to = aws_s3_bucket.application_uploads
+  id = "${var.project_name}-uploads-${data.aws_caller_identity.current.account_id}"
+}
+
+import {
   to = aws_ecs_cluster.this
   id = "${var.project_name}-cluster"
 }
