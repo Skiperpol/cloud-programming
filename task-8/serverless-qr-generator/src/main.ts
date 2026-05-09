@@ -1,10 +1,27 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configure as serverlessExpress } from '@vendia/serverless-express';
-import { Callback, Context, Handler, APIGatewayProxyEvent } from 'aws-lambda';
+import type {
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
+  Callback,
+  Context,
+  Handler,
+} from 'aws-lambda';
+import type { RequestListener } from 'node:http';
 import { ValidationPipe, INestApplication } from '@nestjs/common';
 
-let cachedServer: Handler;
+type WarmupOrApiGatewayEvent = APIGatewayProxyEvent & {
+  readonly source?: string;
+};
+
+function isWarmupInvocation(event: WarmupOrApiGatewayEvent): boolean {
+  return event.source === 'serverless-plugin-warmup';
+}
+
+let cachedServer:
+  | Handler<APIGatewayProxyEvent, APIGatewayProxyResult>
+  | undefined;
 
 function setupApp(app: INestApplication) {
   app.useGlobalPipes(
@@ -16,27 +33,50 @@ function setupApp(app: INestApplication) {
   );
 }
 
-async function bootstrap(): Promise<Handler> {
-  if (!cachedServer) {
+async function resolveExpressLambdaCall(
+  forwarded: void | Promise<APIGatewayProxyResult>,
+): Promise<APIGatewayProxyResult> {
+  const resolved = await Promise.resolve(forwarded);
+  if (resolved === undefined) {
+    return { statusCode: 502, body: '' };
+  }
+  return resolved;
+}
+
+async function bootstrap(): Promise<
+  Handler<APIGatewayProxyEvent, APIGatewayProxyResult>
+> {
+  if (cachedServer === undefined) {
     const app = await NestFactory.create(AppModule);
     setupApp(app);
     await app.init();
 
-    const expressApp = app.getHttpAdapter().getInstance();
-    cachedServer = serverlessExpress({ app: expressApp }) as Handler;
+    const expressApp = app.getHttpAdapter().getInstance() as RequestListener;
+
+    cachedServer = serverlessExpress<
+      APIGatewayProxyEvent,
+      APIGatewayProxyResult
+    >({
+      app: expressApp,
+    });
   }
   return cachedServer;
 }
 
-export const handler: Handler = async (
-  event: APIGatewayProxyEvent,
+export const handler: Handler<
+  WarmupOrApiGatewayEvent,
+  APIGatewayProxyResult | string
+> = async (
+  event: WarmupOrApiGatewayEvent,
   context: Context,
-  callback: Callback,
+  callback: Callback<APIGatewayProxyResult | string>,
 ) => {
-  if (event.source === 'serverless-plugin-warmup') return 'noop';
+  if (isWarmupInvocation(event)) {
+    return 'noop';
+  }
 
   const server = await bootstrap();
-  return server(event, context, callback);
+  return resolveExpressLambdaCall(server(event, context, callback));
 };
 
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
