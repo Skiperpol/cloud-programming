@@ -97,6 +97,16 @@ jobs:
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform init
 
+      - name: Import existing ECR repositories to Stage 2 state
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          for service in gateway candidate parsing verification qualification notification; do
+            terraform import "aws_ecr_repository.services[\"$service\"]" "${PROJECT}-${service}" || true
+          done
+
       - name: Terraform Plan (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform plan -input=false
