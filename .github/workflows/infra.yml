@@ -52,6 +52,31 @@ jobs:
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform init
 
+      - name: Import existing Stage 2 shared resources (if present)
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+
+          if aws logs describe-log-groups --log-group-name-prefix "/ecs/$PROJECT" --query "logGroups[?logGroupName=='/ecs/$PROJECT'] | length(@)" --output text | grep -q '^1$'; then
+            terraform import aws_cloudwatch_log_group.ecs "/ecs/$PROJECT" || true
+          fi
+
+          if aws iam get-role --role-name "${PROJECT}-ecs-execution-role" >/dev/null 2>&1; then
+            terraform import aws_iam_role.execution_role "${PROJECT}-ecs-execution-role" || true
+          fi
+
+          if aws iam get-role --role-name "${PROJECT}-ecs-task-role" >/dev/null 2>&1; then
+            terraform import aws_iam_role.task_role "${PROJECT}-ecs-task-role" || true
+          fi
+
+          for service in gateway candidate parsing verification qualification notification; do
+            if aws ecr describe-repositories --repository-names "${PROJECT}-${service}" >/dev/null 2>&1; then
+              terraform import "aws_ecr_repository.services[\"$service\"]" "${PROJECT}-${service}" || true
+            fi
+          done
+
       - name: Terraform Plan (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform plan -input=false
