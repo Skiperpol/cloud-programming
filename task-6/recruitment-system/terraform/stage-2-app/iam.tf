@@ -29,7 +29,25 @@ resource "aws_iam_role" "task_role" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
 }
 
-resource "aws_iam_role_policy_attachment" "task_s3_access" {
-  role       = aws_iam_role.task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+data "aws_iam_policy_document" "task_s3_application_uploads" {
+  statement {
+    sid    = "ApplicationUploads"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      aws_s3_bucket.application_uploads.arn,
+      "${aws_s3_bucket.application_uploads.arn}/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "task_s3_application_uploads" {
+  name   = "${var.project_name}-ecs-task-s3-uploads"
+  role   = aws_iam_role.task_role.id
+  policy = data.aws_iam_policy_document.task_s3_application_uploads.json
 }

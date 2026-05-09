@@ -52,7 +52,7 @@ locals {
     NOTIFICATION_QUEUE      = "notification.events"
     GATEWAY_QUEUE           = "gateway.events"
     AWS_REGION              = var.aws_region
-    AWS_S3_BUCKET           = var.aws_s3_bucket
+    AWS_S3_BUCKET           = aws_s3_bucket.application_uploads.bucket
     AWS_S3_ENDPOINT         = var.s3_endpoint
     AWS_S3_FORCE_PATH_STYLE = var.aws_s3_force_path_style
   }

@@ -93,11 +93,6 @@ variable "qualification_redis_url" {
   default     = ""
 }
 
-variable "aws_s3_bucket" {
-  type        = string
-  description = "S3 bucket for uploaded CV files."
-}
-
 variable "aws_s3_force_path_style" {
   type        = string
   description = "Force path style for S3 SDK."
