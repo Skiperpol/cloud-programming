@@ -22,8 +22,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Init (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
@@ -35,7 +44,49 @@ jobs:
 
       - name: Terraform Destroy (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
-        run: terraform destroy -auto-approve -input=false
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          if [ -n "$TF_PROJECT_NAME_VAR" ]; then export TF_VAR_project_name="$TF_PROJECT_NAME_VAR"; fi
+          terraform destroy -auto-approve -input=false -parallelism=2
+
+      - name: Remove Stage 2 leftovers (S3 uploads bucket, ECS cluster)
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          PROJECT="${TF_PROJECT_NAME_VAR:-recruitment-system}"
+          REGION="${AWS_DEFAULT_REGION:-eu-north-1}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          CLUSTER="${PROJECT}-cluster"
+          BUCKET="${PROJECT}-uploads-${ACCOUNT}"
+
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Removing uploads bucket s3://$BUCKET (objects + bucket)"
+            aws s3 rb "s3://${BUCKET}" --force --region "$REGION" || echo "Warning: s3 rb failed; continuing with ECS cleanup."
+          else
+            echo "Uploads bucket $BUCKET not found or inaccessible; skipping S3 cleanup."
+          fi
+
+          CLUSTER_STATUS="$(aws ecs describe-clusters --clusters "$CLUSTER" --region "$REGION" --query 'clusters[0].status' --output text 2>/dev/null || echo "")"
+          if [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
+            SERVICES="$(aws ecs list-services --cluster "$CLUSTER" --region "$REGION" --query 'serviceArns[]' --output text 2>/dev/null || true)"
+            if [ -n "$SERVICES" ]; then
+              for svc in $SERVICES; do
+                echo "Deleting ECS service $svc"
+                aws ecs delete-service --cluster "$CLUSTER" --service "$svc" --force --region "$REGION" || true
+              done
+              for _ in $(seq 1 36); do
+                REMAINING="$(aws ecs list-services --cluster "$CLUSTER" --region "$REGION" --query 'length(serviceArns)' --output text 2>/dev/null || echo 1)"
+                [ "${REMAINING:-1}" = "0" ] && break
+                sleep 10
+              done
+            fi
+            echo "Deleting ECS cluster $CLUSTER"
+            aws ecs delete-cluster --cluster "$CLUSTER" --region "$REGION" || true
+          else
+            echo "ECS cluster $CLUSTER not ACTIVE; skipping ECS cleanup."
+          fi
 
       - name: Remove PostgreSQL database resources from state
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
@@ -72,4 +123,8 @@ jobs:
 
       - name: Terraform Destroy (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
-        run: terraform destroy -auto-approve -input=false
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          if [ -n "$TF_PROJECT_NAME_VAR" ]; then export TF_VAR_project_name="$TF_PROJECT_NAME_VAR"; fi
+          terraform destroy -auto-approve -input=false
