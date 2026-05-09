@@ -1,0 +1,1 @@
+export const DEFAULT_QR_SOURCE_URL_MAX_LENGTH = 2048;
