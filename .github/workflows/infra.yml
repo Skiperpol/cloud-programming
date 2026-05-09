@@ -21,6 +21,9 @@ jobs:
       TF_VAR_rabbitmq_url: ${{ secrets.RABBITMQ_URL }}
       TF_VAR_aws_s3_bucket: ${{ secrets.AWS_S3_BUCKET }}
       TF_VAR_stage1_state_backend: local
+      TF_VAR_create_service_databases: "false"
+      TF_VAR_create_subnet_and_param_groups: "false"
+      TF_VAR_create_redis_replication_group: "false"
 
     steps:
       - name: Checkout
