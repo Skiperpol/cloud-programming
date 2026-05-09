@@ -38,6 +38,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Init (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
@@ -75,23 +77,15 @@ jobs:
           PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
         run: |
           PROJECT="${PROJECT_NAME:-recruitment-system}"
+          LG_NAME="/ecs/${PROJECT}"
 
-          if aws logs describe-log-groups --log-group-name-prefix "/ecs/$PROJECT" --query "logGroups[?logGroupName=='/ecs/$PROJECT'] | length(@)" --output text | grep -q '^1$'; then
-            terraform import aws_cloudwatch_log_group.ecs "/ecs/$PROJECT" || true
-          fi
-
-          if aws iam get-role --role-name "${PROJECT}-ecs-execution-role" >/dev/null 2>&1; then
-            terraform import aws_iam_role.execution_role "${PROJECT}-ecs-execution-role" || true
-          fi
-
-          if aws iam get-role --role-name "${PROJECT}-ecs-task-role" >/dev/null 2>&1; then
-            terraform import aws_iam_role.task_role "${PROJECT}-ecs-task-role" || true
-          fi
+          # Adopt pre-existing resources into empty CI state (|| true: not found, or already in state)
+          terraform import -input=false aws_cloudwatch_log_group.ecs "$LG_NAME" || true
+          terraform import -input=false aws_iam_role.execution_role "${PROJECT}-ecs-execution-role" || true
+          terraform import -input=false aws_iam_role.task_role "${PROJECT}-ecs-task-role" || true
 
           for service in gateway candidate parsing verification qualification notification; do
-            if aws ecr describe-repositories --repository-names "${PROJECT}-${service}" >/dev/null 2>&1; then
-              terraform import "aws_ecr_repository.services[\"$service\"]" "${PROJECT}-${service}" || true
-            fi
+            terraform import -input=false "aws_ecr_repository.services[\"$service\"]" "${PROJECT}-${service}" || true
           done
 
       - name: Terraform Plan (Stage 2)
