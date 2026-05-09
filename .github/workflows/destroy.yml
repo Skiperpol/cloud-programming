@@ -57,6 +57,20 @@ jobs:
             echo "No postgresql_database resources in state."
           fi
 
+      - name: Import RDS instance to state (if exists)
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          RDS_ID="${PROJECT}-postgres"
+
+          if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" >/dev/null 2>&1; then
+            terraform import aws_db_instance.main "$RDS_ID" || true
+          else
+            echo "RDS instance not found: $RDS_ID"
+          fi
+
       - name: Terraform Destroy (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform destroy -auto-approve -input=false
