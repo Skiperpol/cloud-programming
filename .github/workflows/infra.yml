@@ -71,23 +71,6 @@ jobs:
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform init
 
-      - name: Import existing Stage 2 shared resources (if present)
-        working-directory: task-6/recruitment-system/terraform/stage-2-app
-        env:
-          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
-        run: |
-          PROJECT="${PROJECT_NAME:-recruitment-system}"
-          LG_NAME="/ecs/${PROJECT}"
-
-          # Adopt pre-existing resources into empty CI state (|| true: not found, or already in state)
-          terraform import -input=false aws_cloudwatch_log_group.ecs "$LG_NAME" || true
-          terraform import -input=false aws_iam_role.execution_role "${PROJECT}-ecs-execution-role" || true
-          terraform import -input=false aws_iam_role.task_role "${PROJECT}-ecs-task-role" || true
-
-          for service in gateway candidate parsing verification qualification notification; do
-            terraform import -input=false "aws_ecr_repository.services[\"$service\"]" "${PROJECT}-${service}" || true
-          done
-
       - name: Terraform Plan (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform plan -input=false
