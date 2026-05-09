@@ -49,7 +49,7 @@ variable "create_subnet_and_param_groups" {
 variable "create_service_databases" {
   type        = bool
   description = "Create service databases inside PostgreSQL instance."
-  default     = false
+  default     = true
 }
 
 variable "create_redis_replication_group" {

@@ -9,23 +9,27 @@ resource "aws_security_group" "redis" {
   description = "Allow Redis access for qualification service"
   vpc_id      = data.aws_vpc.default.id
 
-  ingress {
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
-    cidr_blocks = var.redis_allowed_cidrs
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name = "${var.project_name}-redis-sg"
   }
+}
+
+resource "aws_security_group_rule" "redis_ingress" {
+  type              = "ingress"
+  from_port         = 6379
+  to_port           = 6379
+  protocol          = "tcp"
+  cidr_blocks       = var.redis_allowed_cidrs
+  security_group_id = aws_security_group.redis.id
+}
+
+resource "aws_security_group_rule" "redis_all_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.redis.id
 }
 
 resource "aws_elasticache_subnet_group" "main" {

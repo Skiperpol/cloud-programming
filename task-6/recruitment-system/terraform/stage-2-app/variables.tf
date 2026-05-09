@@ -46,11 +46,6 @@ variable "stage1_state_region" {
   default     = "eu-north-1"
 }
 
-variable "images" {
-  type        = map(string)
-  description = "Docker image URIs for all microservices."
-}
-
 variable "rabbitmq_url" {
   type        = string
   description = "External RabbitMQ connection URL."

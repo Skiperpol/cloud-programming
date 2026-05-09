@@ -21,7 +21,7 @@ resource "aws_ecs_task_definition" "service" {
   container_definitions = jsonencode([
     {
       name      = "${each.key}-service"
-      image     = each.value.image
+      image     = "${aws_ecr_repository.services[each.key].repository_url}:latest"
       essential = true
       portMappings = [
         {

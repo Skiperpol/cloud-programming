@@ -71,9 +71,12 @@ jobs:
 
       - name: Ensure ECR repositories exist
         env:
-          ECR_REPOS: gateway-service candidate-service parsing-service verification-service qualification-service notification-service
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
         run: |
-          for repo in $ECR_REPOS; do
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          ECR_REPOS="gateway candidate parsing verification qualification notification"
+          for service in $ECR_REPOS; do
+            repo="${PROJECT}-${service}"
             aws ecr describe-repositories --repository-names "$repo" >/dev/null 2>&1 || \
             aws ecr create-repository --repository-name "$repo" >/dev/null
           done
@@ -81,23 +84,18 @@ jobs:
       - name: Build, tag, and push images to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
         run: |
           SERVICES="gateway-service candidate-service parsing-service verification-service qualification-service notification-service"
-          IMAGES_JSON="{"
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
 
           for SERVICE in $SERVICES; do
             SHORT_NAME="${SERVICE%-service}"
-            IMAGE_URI="$ECR_REGISTRY/$SERVICE:$IMAGE_TAG"
+            IMAGE_URI="$ECR_REGISTRY/$PROJECT-$SHORT_NAME:latest"
 
             docker build -f "task-6/recruitment-system/apps/$SERVICE/Dockerfile.prod" -t "$IMAGE_URI" "task-6/recruitment-system"
             docker push "$IMAGE_URI"
-
-            IMAGES_JSON="$IMAGES_JSON\"$SHORT_NAME\":\"$IMAGE_URI\","
           done
-
-          IMAGES_JSON="${IMAGES_JSON%,}}"
-          echo "TF_VAR_images=$IMAGES_JSON" >> "$GITHUB_ENV"
 
       - name: Terraform Init (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app

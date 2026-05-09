@@ -36,6 +36,18 @@ jobs:
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform destroy -auto-approve -input=false
 
+      - name: Remove PostgreSQL database resources from state
+        working-directory: task-6/recruitment-system/terraform/stage-1-infra
+        run: |
+          MATCHES="$(terraform state list | rg '^postgresql_database\.service_db\[' || true)"
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES" | while IFS= read -r addr; do
+              terraform state rm "$addr"
+            done
+          else
+            echo "No postgresql_database resources in state."
+          fi
+
       - name: Terraform Destroy (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: terraform destroy -auto-approve -input=false

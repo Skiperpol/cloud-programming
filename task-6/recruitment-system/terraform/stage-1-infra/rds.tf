@@ -3,23 +3,27 @@ resource "aws_security_group" "rds" {
   description = "Allow PostgreSQL access for recruitment services"
   vpc_id      = data.aws_vpc.default.id
 
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = var.db_allowed_cidrs
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name = "${var.project_name}-rds-sg"
   }
+}
+
+resource "aws_security_group_rule" "rds_postgres_ingress" {
+  type              = "ingress"
+  from_port         = 5432
+  to_port           = 5432
+  protocol          = "tcp"
+  cidr_blocks       = var.db_allowed_cidrs
+  security_group_id = aws_security_group.rds.id
+}
+
+resource "aws_security_group_rule" "rds_all_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.rds.id
 }
 
 resource "aws_db_subnet_group" "main" {
@@ -72,4 +76,6 @@ resource "postgresql_database" "service_db" {
 
   name  = each.value
   owner = var.db_master_username
+
+  depends_on = [aws_db_instance.main]
 }
