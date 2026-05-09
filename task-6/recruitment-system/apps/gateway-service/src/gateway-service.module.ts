@@ -31,6 +31,7 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
       load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('gateway-service'),
