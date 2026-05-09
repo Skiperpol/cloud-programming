@@ -10,6 +10,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(app.get(LoggingInterceptor));
   setupSwagger(app, 'gateway-service');
-  await app.listen(process.env.port ?? 3000);
+  const port = Number(process.env.PORT ?? process.env.port ?? 3000);
+  await app.listen(port);
 }
 bootstrap();
