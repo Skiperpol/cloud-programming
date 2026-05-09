@@ -41,11 +41,18 @@ jobs:
       - name: Remove PostgreSQL database resources from state
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: |
-          MATCHES="$(terraform state list | rg '^postgresql_database\.service_db\[' || true)"
+          if ! terraform state pull >/dev/null 2>&1; then
+            echo "No Terraform state found for Stage 1, skipping state cleanup."
+            exit 0
+          fi
+
+          MATCHES="$(terraform state list 2>/dev/null || true)"
           if [ -n "$MATCHES" ]; then
-            echo "$MATCHES" | while IFS= read -r addr; do
-              terraform state rm "$addr"
-            done
+            while IFS= read -r addr; do
+              if [[ "$addr" == postgresql_database.service_db* ]]; then
+                terraform state rm "$addr"
+              fi
+            done <<< "$MATCHES"
           else
             echo "No postgresql_database resources in state."
           fi
