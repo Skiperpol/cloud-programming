@@ -47,7 +47,6 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         env:
           STATE_BUCKET: ${{ secrets.TF_TASK8_STATE_BUCKET }}
-          LOCK_TABLE: ${{ secrets.TF_TASK8_LOCK_TABLE }}
         run: |
           set -euo pipefail
           ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
@@ -60,28 +59,19 @@ jobs:
             STATE_BUCKET="${GENERATED_BUCKET}"
           fi
 
-          if [ -z "${LOCK_TABLE:-}" ]; then
-            LOCK_TABLE="tf-lock-task8-${ACCOUNT_ID}"
-            LOCK_TABLE="${LOCK_TABLE//_/-}"
-          fi
-
           if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
             echo "::error::State bucket ${STATE_BUCKET} does not exist. Run workflow 'Task 8 - Serverless QR Bootstrap Backend' first."
             exit 1
           fi
 
-          if ! aws dynamodb describe-table --table-name "${LOCK_TABLE}" >/dev/null 2>&1; then
-            echo "::error::Lock table ${LOCK_TABLE} does not exist. Run workflow 'Task 8 - Serverless QR Bootstrap Backend' first."
-            exit 1
-          fi
-
           args=(
+            -reconfigure
             -input=false
             -backend-config="bucket=${STATE_BUCKET}"
             -backend-config="key=task-8/serverless-qr/terraform.tfstate"
             -backend-config="region=${AWS_DEFAULT_REGION}"
             -backend-config="encrypt=true"
-            -backend-config="dynamodb_table=${LOCK_TABLE}"
+            -backend-config="use_lockfile=true"
           )
           terraform init "${args[@]}"
 

@@ -44,15 +44,8 @@ jobs:
             STATE_BUCKET="${STATE_BUCKET%-}"
           fi
 
-          LOCK_TABLE="${{ secrets.TF_TASK8_LOCK_TABLE }}"
-          if [ -z "${LOCK_TABLE}" ]; then
-            LOCK_TABLE="tf-lock-task8-${ACCOUNT_ID}"
-            LOCK_TABLE="${LOCK_TABLE//_/-}"
-          fi
-
           echo "TF_VAR_aws_region=${AWS_DEFAULT_REGION}" >> "$GITHUB_ENV"
           echo "TF_VAR_state_bucket_name=${STATE_BUCKET}" >> "$GITHUB_ENV"
-          echo "TF_VAR_lock_table_name=${LOCK_TABLE}" >> "$GITHUB_ENV"
 
       - name: Terraform Init (bootstrap)
         working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
