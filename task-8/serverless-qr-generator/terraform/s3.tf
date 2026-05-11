@@ -3,7 +3,8 @@ resource "random_id" "bucket_suffix" {
 }
 
 resource "aws_s3_bucket" "qr_codes" {
-  bucket = "${var.project_name}-qr-${random_id.bucket_suffix.hex}"
+  bucket        = "${var.project_name}-qr-${random_id.bucket_suffix.hex}"
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "qr_codes" {
