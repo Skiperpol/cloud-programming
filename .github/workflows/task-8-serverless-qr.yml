@@ -1,0 +1,139 @@
+# Requires secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, TF_TASK8_STATE_BUCKET (S3 bucket for Terraform state).
+# Optional: TF_TASK8_LOCK_TABLE (DynamoDB lock), repository variable TF_TASK8_PROJECT_NAME (resource prefix, default: serverless-qr).
+
+name: Task 8 — Serverless QR (Terraform + Lambda)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "task-8/**"
+      - ".github/workflows/task-8-serverless-qr.yml"
+  workflow_dispatch:
+
+env:
+  APP_DIR: task-8/serverless-qr-generator
+  TF_DIR: task-8/serverless-qr-generator/terraform
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Optional Terraform project prefix
+        run: |
+          if [ -n "${{ vars.TF_TASK8_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_TASK8_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init (backend S3)
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          STATE_BUCKET: ${{ secrets.TF_TASK8_STATE_BUCKET }}
+          LOCK_TABLE: ${{ secrets.TF_TASK8_LOCK_TABLE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STATE_BUCKET:-}" ]; then
+            echo "::error::Set the TF_TASK8_STATE_BUCKET secret - S3 bucket name for Terraform state."
+            exit 1
+          fi
+          if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
+            echo "State bucket ${STATE_BUCKET} does not exist. Creating it..."
+            if [ "${AWS_DEFAULT_REGION}" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "${STATE_BUCKET}"
+            else
+              aws s3api create-bucket \
+                --bucket "${STATE_BUCKET}" \
+                --create-bucket-configuration LocationConstraint="${AWS_DEFAULT_REGION}"
+            fi
+            aws s3api put-public-access-block \
+              --bucket "${STATE_BUCKET}" \
+              --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+            aws s3api put-bucket-versioning \
+              --bucket "${STATE_BUCKET}" \
+              --versioning-configuration Status=Enabled
+            aws s3api put-bucket-encryption \
+              --bucket "${STATE_BUCKET}" \
+              --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+          fi
+          args=(
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-8/serverless-qr/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+          )
+          if [ -n "${LOCK_TABLE:-}" ]; then
+            args+=(-backend-config="dynamodb_table=${LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Terraform apply - foundation (ECR, S3, DynamoDB, IAM)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform apply -auto-approve -input=false \
+            -target=random_id.bucket_suffix \
+            -target=aws_ecr_repository.app \
+            -target=aws_ecr_lifecycle_policy.app \
+            -target=aws_s3_bucket.qr_codes \
+            -target=aws_s3_bucket_public_access_block.qr_codes \
+            -target=aws_s3_bucket_policy.qr_codes_public_read \
+            -target=aws_dynamodb_table.qr_metadata \
+            -target=aws_iam_role.lambda \
+            -target=aws_iam_role_policy_attachment.lambda_basic \
+            -target=aws_iam_role_policy.lambda_data
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Terraform output - ECR URL
+        id: ecr_out
+        working-directory: ${{ env.TF_DIR }}
+        run: echo "repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image (Lambda container)
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          REPO_URL: ${{ steps.ecr_out.outputs.repository_url }}
+        run: |
+          set -euo pipefail
+          IMAGE_SHA="${REPO_URL}:${GITHUB_SHA}"
+          IMAGE_LATEST="${REPO_URL}:latest"
+          docker buildx build --load -f Dockerfile.prod -t "${IMAGE_SHA}" -t "${IMAGE_LATEST}" .
+          docker push "${IMAGE_SHA}"
+          docker push "${IMAGE_LATEST}"
+
+      - name: Terraform apply - Lambda + API Gateway
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_image_tag: ${{ github.sha }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Deployment summary
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform output -no-color

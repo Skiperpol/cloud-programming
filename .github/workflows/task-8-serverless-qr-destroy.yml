@@ -1,0 +1,95 @@
+name: Task 8 - Serverless QR Destroy (Terraform)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: "Type DESTROY to confirm infrastructure removal"
+        required: true
+        type: string
+
+env:
+  TF_DIR: task-8/serverless-qr-generator/terraform
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "::error::Confirmation failed. Type DESTROY exactly to run this workflow."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Optional Terraform project prefix
+        run: |
+          if [ -n "${{ vars.TF_TASK8_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_TASK8_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init (backend S3)
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          STATE_BUCKET: ${{ secrets.TF_TASK8_STATE_BUCKET }}
+          LOCK_TABLE: ${{ secrets.TF_TASK8_LOCK_TABLE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STATE_BUCKET:-}" ]; then
+            echo "::error::Set the TF_TASK8_STATE_BUCKET secret - S3 bucket name for Terraform state."
+            exit 1
+          fi
+          if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
+            echo "State bucket ${STATE_BUCKET} does not exist. Creating it..."
+            if [ "${AWS_DEFAULT_REGION}" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "${STATE_BUCKET}"
+            else
+              aws s3api create-bucket \
+                --bucket "${STATE_BUCKET}" \
+                --create-bucket-configuration LocationConstraint="${AWS_DEFAULT_REGION}"
+            fi
+            aws s3api put-public-access-block \
+              --bucket "${STATE_BUCKET}" \
+              --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+            aws s3api put-bucket-versioning \
+              --bucket "${STATE_BUCKET}" \
+              --versioning-configuration Status=Enabled
+            aws s3api put-bucket-encryption \
+              --bucket "${STATE_BUCKET}" \
+              --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+          fi
+          args=(
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-8/serverless-qr/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+          )
+          if [ -n "${LOCK_TABLE:-}" ]; then
+            args+=(-backend-config="dynamodb_table=${LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Terraform Destroy
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform destroy -auto-approve -input=false
