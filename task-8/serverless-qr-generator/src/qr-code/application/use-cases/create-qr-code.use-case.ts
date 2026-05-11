@@ -13,15 +13,7 @@ import {
   QR_GENERATOR,
   QR_METADATA_REPOSITORY,
 } from '../../domain/constants/injection-tokens';
-
-const PNG_EXTENSION = 'png';
-const PNG_CONTENT_TYPE = 'image/png';
-
-function addUtcDays(base: Date, days: number): Date {
-  const next = new Date(base.getTime());
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
+import { createQrCodeRecord } from '../../domain/factories/qr-code-record.factory';
 
 @Injectable()
 export class CreateQrCodeUseCase {
@@ -50,26 +42,29 @@ export class CreateQrCodeUseCase {
 
     const normalizedUrl = url.trim();
     const urlHash = this.hashService.hash(normalizedUrl);
-    const fileName = `${urlHash}.${PNG_EXTENSION}`;
+    const fileExtension = this.policy.fileExtension;
+    const contentType = this.policy.contentType;
+    const fileName = `${urlHash}.${fileExtension}`;
     const createdAt = new Date();
-    const expiresAt = addUtcDays(createdAt, this.policy.expirationDays);
 
     const qrBuffer = await this.qrGenerator.generate(normalizedUrl);
 
     const { publicUrl } = await this.objectStorage.putPublicObject({
       key: fileName,
       body: qrBuffer,
-      contentType: PNG_CONTENT_TYPE,
+      contentType,
     });
 
-    await this.metadataRepository.save({
-      url: normalizedUrl,
-      fileName,
-      fileExtension: PNG_EXTENSION,
-      fileSizeBytes: qrBuffer.length,
-      expiresAt,
-      createdAt,
-    });
+    await this.metadataRepository.save(
+      createQrCodeRecord({
+        url: normalizedUrl,
+        fileName,
+        fileExtension,
+        fileSizeBytes: qrBuffer.length,
+        createdAt,
+        expirationDays: this.policy.expirationDays,
+      }),
+    );
 
     return publicUrl;
   }

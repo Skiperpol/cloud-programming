@@ -8,6 +8,12 @@ export class QrCodeEnvConfig implements IQrCodeGenerationPolicy {
     process.env.QR_CODE_MAX_URL_LENGTH ?? DEFAULT_QR_SOURCE_URL_MAX_LENGTH,
   );
   readonly expirationDays = Number(process.env.QR_CODE_EXPIRATION_DAYS ?? 90);
+  readonly fileExtension = String(
+    process.env.QR_CODE_FILE_EXTENSION?.trim() || 'png',
+  );
+  readonly contentType = String(
+    process.env.QR_CODE_CONTENT_TYPE?.trim() || 'image/png',
+  );
   readonly s3BucketName = process.env.QR_CODES_BUCKET_NAME ?? '';
   readonly dynamoTableName = process.env.QR_CODES_TABLE_NAME ?? '';
   readonly awsRegion =
