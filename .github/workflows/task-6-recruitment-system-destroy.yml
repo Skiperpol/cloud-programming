@@ -53,7 +53,7 @@ jobs:
           fi
 
           if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
-            echo "::error::State bucket ${STATE_BUCKET} does not exist."
+            echo "::error::State bucket ${STATE_BUCKET} does not exist. Run workflow 'Task 6 - Recruitment System Bootstrap Backend' first."
             exit 1
           fi
 
