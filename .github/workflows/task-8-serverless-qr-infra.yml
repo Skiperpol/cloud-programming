@@ -1,12 +1,6 @@
 name: Task 8 - Serverless QR Infra (Terraform)
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "task-8/**"
-  #     - ".github/workflows/task-8-serverless-qr.yml"
   workflow_dispatch:
 
 env:
