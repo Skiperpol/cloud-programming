@@ -51,6 +51,22 @@ jobs:
         working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
         run: terraform init -input=false
 
+      - name: Adopt existing state bucket (if already in AWS)
+        working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
+        run: |
+          set -euo pipefail
+          BUCKET="${TF_VAR_state_bucket_name}"
+          if aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
+            if ! terraform state show -no-color aws_s3_bucket.tf_state >/dev/null 2>&1; then
+              echo "Bucket ${BUCKET} already exists; importing into state..."
+              terraform import -input=false aws_s3_bucket.tf_state "${BUCKET}"
+            else
+              echo "Bucket ${BUCKET} already in Terraform state."
+            fi
+          else
+            echo "Bucket ${BUCKET} does not exist yet; apply will create it."
+          fi
+
       - name: Terraform Apply (bootstrap backend)
         working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
         run: terraform apply -auto-approve -input=false
