@@ -25,6 +25,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Optional Terraform project name
+        run: |
+          if [ -n "${{ vars.TF_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -133,6 +139,34 @@ jobs:
           else
             echo "ECS cluster $CLUSTER not ACTIVE; skipping ECS cleanup."
           fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            repo="${PROJECT}-${key}"
+            if aws ecr describe-repositories --repository-names "$repo" --region "$REGION" >/dev/null 2>&1; then
+              echo "Deleting ECR repository $repo"
+              aws ecr delete-repository --repository-name "$repo" --force --region "$REGION" || true
+            fi
+          done
+
+          LG="/ecs/${PROJECT}"
+          if aws logs describe-log-groups --log-group-name-prefix "$LG" --region "$REGION" \
+            --query "logGroups[?logGroupName=='${LG}'] | length(@)" --output text 2>/dev/null | grep -qx 1; then
+            echo "Deleting log group $LG"
+            aws logs delete-log-group --log-group-name "$LG" --region "$REGION" || true
+          fi
+
+          for RLE in "${PROJECT}-ecs-execution-role" "${PROJECT}-ecs-task-role"; do
+            if aws iam get-role --role-name "$RLE" >/dev/null 2>&1; then
+              echo "Deleting IAM role $RLE"
+              for arn in $(aws iam list-attached-role-policies --role-name "$RLE" --query 'AttachedPolicies[].PolicyArn' --output text 2>/dev/null || true); do
+                [ -n "$arn" ] && aws iam detach-role-policy --role-name "$RLE" --policy-arn "$arn" || true
+              done
+              for pol in $(aws iam list-role-policies --role-name "$RLE" --query 'PolicyNames[]' --output text 2>/dev/null || true); do
+                [ -n "$pol" ] && aws iam delete-role-policy --role-name "$RLE" --policy-name "$pol" || true
+              done
+              aws iam delete-role --role-name "$RLE" || true
+            fi
+          done
 
       - name: Remove PostgreSQL database resources from state
         working-directory: task-6/recruitment-system/terraform/stage-1-infra

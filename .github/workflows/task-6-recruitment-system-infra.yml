@@ -1,12 +1,6 @@
 name: Task 6 - Recruitment System Infra
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "task-6/recruitment-system/terraform/**"
-  #     - ".github/workflows/task-6-recruitment-system-infra.yml"
   workflow_dispatch:
 
 jobs:
@@ -29,6 +23,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Optional Terraform project name (Stage 1 + 2)
+        run: |
+          if [ -n "${{ vars.TF_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -115,6 +115,89 @@ jobs:
           )
           terraform init "${args[@]}"
 
+      - name: Import pre-existing Stage 2 resources (if in AWS but not in state)
+        working-directory: task-6/recruitment-system/terraform/stage-2-app
+        run: |
+          set -euo pipefail
+          cons_args=()
+          if [ -f terraform.tfvars ]; then cons_args+=(-var-file=terraform.tfvars); fi
+          PROJECT="$(printf 'var.project_name\n' | terraform console "${cons_args[@]}" | tr -d '\r' | sed 's/^"//;s/"$//')"
+          echo "Resolved project_name for imports: ${PROJECT}"
+
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          BUCKET="${PROJECT}-uploads-${ACCOUNT}"
+          CLUSTER="${PROJECT}-cluster"
+          LG="/ecs/${PROJECT}"
+          EXEC_ROLE="${PROJECT}-ecs-execution-role"
+          TASK_ROLE="${PROJECT}-ecs-task-role"
+          POLICY_NAME="${PROJECT}-ecs-task-s3-uploads"
+
+          in_state() { terraform state show -no-color "$1" >/dev/null 2>&1; }
+
+          if ! in_state aws_s3_bucket.application_uploads && aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
+            echo "Import S3: ${BUCKET}"
+            terraform import -input=false aws_s3_bucket.application_uploads "${BUCKET}"
+          fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            repo="${PROJECT}-${key}"
+            addr="aws_ecr_repository.services[\"${key}\"]"
+            if ! in_state "${addr}" && aws ecr describe-repositories --repository-names "${repo}" >/dev/null 2>&1; then
+              echo "Import ECR: ${repo}"
+              terraform import -input=false "${addr}" "${repo}"
+            fi
+          done
+
+          if ! in_state aws_cloudwatch_log_group.ecs; then
+            if [ "$(aws logs describe-log-groups --log-group-name-prefix "${LG}" --query "length(logGroups[?logGroupName=='${LG}'])" --output text 2>/dev/null || echo 0)" = "1" ]; then
+              echo "Import log group: ${LG}"
+              terraform import -input=false aws_cloudwatch_log_group.ecs "${LG}"
+            fi
+          fi
+
+          if ! in_state aws_iam_role.execution_role && aws iam get-role --role-name "${EXEC_ROLE}" >/dev/null 2>&1; then
+            echo "Import IAM execution role"
+            terraform import -input=false aws_iam_role.execution_role "${EXEC_ROLE}"
+          fi
+          if ! in_state aws_iam_role.task_role && aws iam get-role --role-name "${TASK_ROLE}" >/dev/null 2>&1; then
+            echo "Import IAM task role"
+            terraform import -input=false aws_iam_role.task_role "${TASK_ROLE}"
+          fi
+
+          if in_state aws_iam_role.execution_role; then
+            if ! in_state aws_iam_role_policy_attachment.execution_role_policy && \
+              aws iam list-attached-role-policies --role-name "${EXEC_ROLE}" --query "AttachedPolicies[?PolicyArn=='arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy']" --output text 2>/dev/null | grep -q .; then
+              terraform import -input=false aws_iam_role_policy_attachment.execution_role_policy \
+                "${EXEC_ROLE}/arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+            fi
+            if ! in_state aws_iam_role_policy_attachment.execution_role_ecr_readonly && \
+              aws iam list-attached-role-policies --role-name "${EXEC_ROLE}" --query "AttachedPolicies[?PolicyArn=='arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly']" --output text 2>/dev/null | grep -q .; then
+              terraform import -input=false aws_iam_role_policy_attachment.execution_role_ecr_readonly \
+                "${EXEC_ROLE}/arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            fi
+          fi
+
+          if in_state aws_iam_role.task_role && in_state aws_s3_bucket.application_uploads && \
+            ! in_state aws_iam_role_policy.task_s3_application_uploads && \
+            aws iam get-role-policy --role-name "${TASK_ROLE}" --policy-name "${POLICY_NAME}" >/dev/null 2>&1; then
+            terraform import -input=false aws_iam_role_policy.task_s3_application_uploads "${TASK_ROLE}:${POLICY_NAME}"
+          fi
+
+          if ! in_state aws_ecs_cluster.this && [ "$(aws ecs describe-clusters --clusters "${CLUSTER}" --query 'clusters[0].status' --output text 2>/dev/null || echo "")" = "ACTIVE" ]; then
+            echo "Import ECS cluster: ${CLUSTER}"
+            terraform import -input=false aws_ecs_cluster.this "${CLUSTER}"
+          fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            svc="${PROJECT}-${key}"
+            addr="aws_ecs_service.service[\"${key}\"]"
+            st="$(aws ecs describe-services --cluster "${CLUSTER}" --services "${svc}" --query 'services[0].status' --output text 2>/dev/null || echo "")"
+            if ! in_state "${addr}" && { [ "${st}" = "ACTIVE" ] || [ "${st}" = "DRAINING" ]; }; then
+              echo "Import ECS service: ${CLUSTER}/${svc}"
+              terraform import -input=false "${addr}" "${CLUSTER}/${svc}"
+            fi
+          done
+
       - name: Terraform Plan (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform plan -input=false
@@ -122,4 +205,3 @@ jobs:
       - name: Terraform Apply (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
         run: terraform apply -auto-approve -input=false -parallelism=5
-
