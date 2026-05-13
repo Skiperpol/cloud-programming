@@ -1,25 +1,26 @@
-name: Task 8 - Serverless QR Infra (Terraform)
+name: Task 8 - Serverless QR App Deploy (Terraform + Lambda)
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "task-8/**"
-  #     - ".github/workflows/task-8-serverless-qr.yml"
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Task 8 - Serverless QR Infra (Terraform)"
+    types:
+      - completed
 
 env:
   APP_DIR: task-8/serverless-qr-generator
   TF_DIR: task-8/serverless-qr-generator/terraform
 
 jobs:
-  infra:
+  app-deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout
@@ -69,17 +70,38 @@ jobs:
           )
           terraform init "${args[@]}"
 
-      - name: Terraform apply - foundation (ECR, S3, DynamoDB, IAM)
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Terraform output - ECR URL
+        id: ecr_out
+        working-directory: ${{ env.TF_DIR }}
+        run: echo "repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image (Lambda container)
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          REPO_URL: ${{ steps.ecr_out.outputs.repository_url }}
+        run: |
+          set -euo pipefail
+          IMAGE_SHA="${REPO_URL}:${IMAGE_TAG}"
+          IMAGE_LATEST="${REPO_URL}:latest"
+          docker buildx build --load -f Dockerfile.prod -t "${IMAGE_SHA}" -t "${IMAGE_LATEST}" .
+          docker push "${IMAGE_SHA}"
+          docker push "${IMAGE_LATEST}"
+
+      - name: Terraform apply - Lambda + API Gateway
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_image_tag: ${{ env.IMAGE_TAG }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Deployment summary
         working-directory: ${{ env.TF_DIR }}
         run: |
-          terraform apply -auto-approve -input=false \
-            -target=random_id.bucket_suffix \
-            -target=aws_ecr_repository.app \
-            -target=aws_ecr_lifecycle_policy.app \
-            -target=aws_s3_bucket.qr_codes \
-            -target=aws_s3_bucket_public_access_block.qr_codes \
-            -target=aws_s3_bucket_policy.qr_codes_public_read \
-            -target=aws_dynamodb_table.qr_metadata \
-            -target=aws_iam_role.lambda \
-            -target=aws_iam_role_policy_attachment.lambda_basic \
-            -target=aws_iam_role_policy.lambda_data
+          terraform output -no-color
+
