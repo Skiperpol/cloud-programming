@@ -15,7 +15,7 @@ resource "aws_ecr_lifecycle_policy" "app" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep a maximum of 15 images"
+        description  = "Keep a maximum of 3 images"
         selection = {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
