@@ -47,7 +47,7 @@ resource "aws_db_instance" "main" {
   storage_type      = "gp3"
   engine            = "postgres"
   engine_version    = "16"
-  instance_class    = "db.t4g.micro" # Najtańsza
+  instance_class    = "db.t4g.micro"
 
   db_name  = "postgres"
   username = var.db_master_username

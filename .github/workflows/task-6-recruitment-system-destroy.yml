@@ -1,4 +1,4 @@
-name: Terraform Destroy
+name: Task 6 - Recruitment System Destroy
 
 on:
   workflow_dispatch:
@@ -13,6 +13,9 @@ jobs:
       AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
       TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
       TF_VAR_rabbitmq_url: ${{ secrets.RABBITMQ_URL }}
+      TF_VAR_stage1_state_backend: s3
+      TF_VAR_stage1_state_key: task-6/recruitment-system/stage-1-infra/terraform.tfstate
+      TF_VAR_stage1_state_region: ${{ secrets.AWS_REGION }}
 
     defaults:
       run:
@@ -34,13 +37,56 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Resolve state bucket name
+        env:
+          STATE_BUCKET: ${{ secrets.TF_TASK6_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          if [ -z "${STATE_BUCKET:-}" ]; then
+            GENERATED_BUCKET="tfstate-${GITHUB_REPOSITORY,,}-${AWS_DEFAULT_REGION}-${ACCOUNT_ID}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//\//-}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//_/-}"
+            GENERATED_BUCKET="$(echo "${GENERATED_BUCKET}" | tr -cd 'a-z0-9.-' | cut -c1-63)"
+            GENERATED_BUCKET="${GENERATED_BUCKET%-}"
+            STATE_BUCKET="${GENERATED_BUCKET}"
+          fi
+
+          if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
+            echo "::error::State bucket ${STATE_BUCKET} does not exist."
+            exit 1
+          fi
+
+          echo "STATE_BUCKET=${STATE_BUCKET}" >> "$GITHUB_ENV"
+          echo "TF_VAR_stage1_state_bucket=${STATE_BUCKET}" >> "$GITHUB_ENV"
+
       - name: Terraform Init (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
-        run: terraform init
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-6/recruitment-system/stage-1-infra/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
 
       - name: Terraform Init (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
-        run: terraform init
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-6/recruitment-system/stage-2-app/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
 
       - name: Terraform Destroy (Stage 2)
         working-directory: task-6/recruitment-system/terraform/stage-2-app
@@ -128,3 +174,4 @@ jobs:
         run: |
           if [ -n "$TF_PROJECT_NAME_VAR" ]; then export TF_VAR_project_name="$TF_PROJECT_NAME_VAR"; fi
           terraform destroy -auto-approve -input=false
+
