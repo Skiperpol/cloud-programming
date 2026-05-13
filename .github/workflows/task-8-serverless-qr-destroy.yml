@@ -20,21 +20,8 @@ jobs:
       AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
-      - name: Validate confirmation
-        run: |
-          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "::error::Confirmation failed. Type DESTROY exactly to run this workflow."
-            exit 1
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Optional Terraform project prefix
-        run: |
-          if [ -n "${{ vars.TF_TASK8_PROJECT_NAME }}" ]; then
-            echo "TF_VAR_project_name=${{ vars.TF_TASK8_PROJECT_NAME }}" >> "$GITHUB_ENV"
-          fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
