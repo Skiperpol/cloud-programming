@@ -62,6 +62,9 @@ jobs:
             exit 1
           fi
 
+          echo "STATE_BUCKET=${STATE_BUCKET}" >> "$GITHUB_ENV"
+          echo "TF_VAR_stage1_state_bucket=${STATE_BUCKET}" >> "$GITHUB_ENV"
+
       - name: Terraform Init (Stage 1)
         working-directory: task-6/recruitment-system/terraform/stage-1-infra
         run: |
