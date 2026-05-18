@@ -24,12 +24,21 @@ services:
         limits:
           cpus: '0.50'
           memory: 256M
+
   gateway-service:
     <<: *nest-defaults
     image: recruitment/gateway-service:latest
     environment:
       PORT: 3000
       RABBITMQ_URL: ${RABBITMQ_URL}
+      GATEWAY_DB_URL: ${GATEWAY_DB_URL}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-}
+      AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE:-false}
     ports:
       - '3000:3000'
     deploy:
@@ -51,6 +60,7 @@ services:
     environment:
       PORT: 3001
       RABBITMQ_URL: ${RABBITMQ_URL}
+      CANDIDATE_DB_URL: ${CANDIDATE_DB_URL}
     ports:
       - '3001:3001'
     deploy:
@@ -72,6 +82,7 @@ services:
     environment:
       PORT: 3002
       RABBITMQ_URL: ${RABBITMQ_URL}
+      PARSER_DB_URL: ${PARSER_DB_URL}
     ports:
       - '3002:3002'
     deploy:
@@ -90,6 +101,7 @@ services:
     environment:
       PORT: 3003
       RABBITMQ_URL: ${RABBITMQ_URL}
+      BLACKLIST_DB_URL: ${BLACKLIST_DB_URL}
     ports:
       - '3003:3003'
     deploy:
@@ -101,7 +113,8 @@ services:
     environment:
       PORT: 3004
       RABBITMQ_URL: ${RABBITMQ_URL}
-      QUALIFICATION_REDIS_URL: redis://redis:6379
+      QUALIFICATION_DB_URL: ${QUALIFICATION_DB_URL}
+      QUALIFICATION_REDIS_URL: ${QUALIFICATION_REDIS_URL:-redis://redis:6379}
       REDIS_HOST: redis
       REDIS_PORT: 6379
     ports:
@@ -115,6 +128,7 @@ services:
     environment:
       PORT: 3005
       RABBITMQ_URL: ${RABBITMQ_URL}
+      NOTIFICATION_DB_URL: ${NOTIFICATION_DB_URL}
     ports:
       - '3005:3005'
     deploy:

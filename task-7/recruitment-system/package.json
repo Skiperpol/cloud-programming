@@ -18,7 +18,11 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./apps/recruitment-system/test/jest-e2e.json"
+    "test:e2e": "jest --config ./apps/recruitment-system/test/jest-e2e.json",
+    "docker:build": "docker build -f apps/gateway-service/Dockerfile.prod -t recruitment/gateway-service:latest . && docker build -f apps/candidate-service/Dockerfile.prod -t recruitment/candidate-service:latest . && docker build -f apps/parsing-service/Dockerfile.prod -t recruitment/parsing-service:latest . && docker build -f apps/verification-service/Dockerfile.prod -t recruitment/verification-service:latest . && docker build -f apps/qualification-service/Dockerfile.prod -t recruitment/qualification-service:latest . && docker build -f apps/notification-service/Dockerfile.prod -t recruitment/notification-service:latest .",
+    "stack:deploy": "docker stack deploy --env-file .env -c docker-compose.yml recruitment",
+    "stack:rm": "docker stack rm recruitment",
+    "stack:ls": "docker stack services recruitment"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1032.0",

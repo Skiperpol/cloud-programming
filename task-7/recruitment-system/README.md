@@ -72,10 +72,88 @@ Na konsoli widać to **tylko dla procesów, które faktycznie uruchomiłeś** (n
 
 Dodatkowo każdy start zapisuje skrót zdarzeń do **`logs/db-connection.log`** (wspólny plik dla wszystkich procesów — wygodne przy `start:all`). `qualification-service` loguje też Redis (`qualification-service:redis` + wpisy `redis` w tym pliku).
 
-Komendy do zadania 7:
+## Task 7 — Docker Swarm + AWS RDS (bez ręcznej konfiguracji w konsoli)
 
-docker stack deploy -c docker-compose.yml recruitment
-docker service ls
+### Wymagania
+
+- Docker z obsługą Swarm
+- AWS CLI + Terraform (lokalnie) **albo** GitHub Actions
+- RabbitMQ osiągalny z kontenerów (np. CloudAMQP — nie `localhost` hosta)
+- Sekrety GitHub: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `DB_MASTER_PASSWORD`
+
+### 1. Infrastruktura AWS (Terraform)
+
+**GitHub Actions (zalecane):**
+
+1. `Task 7 - Recruitment System Bootstrap Backend` — bucket na state
+2. `Task 7 - Recruitment System Infra` — RDS PostgreSQL, 6 baz danych, bucket S3 na CV
+
+**Lokalnie:**
+
+```bash
+cd task-7/recruitment-system
+export AWS_REGION=eu-central-1
+export TF_VAR_db_master_password='twoje-haslo'
+
+# Po workflow Bootstrap — init backendu (dostosuj bucket do swojego konta):
+cd terraform/stage-1-infra
+terraform init -reconfigure \
+  -backend-config="bucket=TWÓJ-BUCKET-TFSTATE" \
+  -backend-config="key=task-7/recruitment-system/stage-1-infra/terraform.tfstate" \
+  -backend-config="region=${AWS_REGION}" \
+  -backend-config="encrypt=true" \
+  -backend-config="use_lockfile=true"
+terraform apply -auto-approve
+cd ../..
+```
+
+### 2. Plik `.env`
+
+```bash
+cp .env.example .env
+# Uzupełnij RABBITMQ_URL oraz AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+cd terraform/stage-1-infra
+terraform output -json database_urls
+terraform output -raw aws_s3_bucket
+terraform output -raw aws_region
+cd ../..
+```
+
+Skopiuj wartości z outputów do `.env`:
+
+| Terraform (`database_urls`) | Zmienna w `.env` |
+|-----------------------------|------------------|
+| `gateway_db` | `GATEWAY_DB_URL` |
+| `candidate_db` | `CANDIDATE_DB_URL` |
+| `parser_db` | `PARSER_DB_URL` |
+| `blacklist_db` | `BLACKLIST_DB_URL` |
+| `qualification_db` | `QUALIFICATION_DB_URL` |
+| `notification_db` | `NOTIFICATION_DB_URL` |
+
+Dodatkowo: `AWS_S3_BUCKET`, `AWS_REGION` z outputów; `QUALIFICATION_REDIS_URL=redis://redis:6379`.
+
+### 3. Build obrazów + deploy stacku
+
+```bash
+npm run docker:build
+docker swarm init   # tylko przy pierwszym uruchomieniu
+npm run stack:deploy
+```
+
+### 4. Operacje na stacku
+
+```bash
+npm run stack:ls
 docker service ps recruitment_candidate-service
 docker service scale recruitment_gateway-service=5
-docker stack rm recruitment
+npm run stack:rm
+```
+
+### 5. Sprzątanie AWS
+
+Workflow: `Task 7 - Recruitment System Destroy`
+
+---
+
+**Uwaga:** `qualification-service` używa Redis z stacku (`redis://redis:6379`), nie ElastiCache — wystarczy na zadanie 7.

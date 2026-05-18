@@ -58,7 +58,7 @@ jobs:
           BUCKET="${TF_VAR_state_bucket_name}"
           if aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
             if ! terraform state show -no-color aws_s3_bucket.tf_state >/dev/null 2>&1; then
-              echo "Bucket ${BUCKET} already exists (e.g. shared with Task 8); importing into state..."
+              echo "Bucket ${BUCKET} already exists; importing into state..."
               terraform import -input=false aws_s3_bucket.tf_state "${BUCKET}"
             else
               echo "Bucket ${BUCKET} already in Terraform state."
