@@ -12,138 +12,114 @@ x-nest-defaults: &nest-defaults
 services:
   redis:
     image: redis:7-alpine
-    container_name: recruitment-redis
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+    networks:
+      - recruitment-overlay-network
     ports:
       - '6380:6379'
-    networks:
-      - recruitment-network
-
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
   gateway-service:
     <<: *nest-defaults
-    build:
-      context: .
-      dockerfile: apps/gateway-service/Dockerfile
     image: recruitment/gateway-service:latest
-    container_name: gateway-service
     environment:
       PORT: 3000
       RABBITMQ_URL: ${RABBITMQ_URL}
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3000:3000'
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 256M
 
   candidate-service:
     <<: *nest-defaults
-    build:
-      context: .
-      dockerfile: apps/candidate-service/Dockerfile
     image: recruitment/candidate-service:latest
-    container_name: candidate-service
     environment:
       PORT: 3001
       RABBITMQ_URL: ${RABBITMQ_URL}
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3001/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3001:3001'
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 256M
 
   parsing-service:
     <<: *nest-defaults
-    build:
-      context: .
-      dockerfile: apps/parsing-service/Dockerfile
     image: recruitment/parsing-service:latest
-    container_name: parsing-service
     environment:
       PORT: 3002
       RABBITMQ_URL: ${RABBITMQ_URL}
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3002/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3002:3002'
+    deploy:
+      replicas: 4
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
   verification-service:
     <<: *nest-defaults
-    build:
-      context: .
-      dockerfile: apps/verification-service/Dockerfile
     image: recruitment/verification-service:latest
-    container_name: verification-service
     environment:
       PORT: 3003
       RABBITMQ_URL: ${RABBITMQ_URL}
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3003/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3003:3003'
+    deploy:
+      replicas: 1
 
   qualification-service:
     <<: *nest-defaults
-    depends_on:
-      redis:
-        condition: service_healthy
-    build:
-      context: .
-      dockerfile: apps/qualification-service/Dockerfile
     image: recruitment/qualification-service:latest
-    container_name: qualification-service
     environment:
       PORT: 3004
       RABBITMQ_URL: ${RABBITMQ_URL}
       QUALIFICATION_REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3004/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3004:3004'
+    deploy:
+      replicas: 1
 
   notification-service:
     <<: *nest-defaults
-    build:
-      context: .
-      dockerfile: apps/notification-service/Dockerfile
     image: recruitment/notification-service:latest
-    container_name: notification-service
     environment:
       PORT: 3005
       RABBITMQ_URL: ${RABBITMQ_URL}
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:3005/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     ports:
       - '3005:3005'
+    deploy:
+      replicas: 1
 
 networks:
-  recruitment-network:
-    driver: bridge
+  recruitment-overlay-network:
+    driver: overlay
