@@ -1,92 +1,81 @@
-# Recruitment CV-Flow (Task 6)
+# Recruitment CV-Flow (Task 4)
 
-Deployment mikroserwisów z użyciem Docker images (z task-5) i Terraform w 2 etapach.
+System mikroserwisowy w NestJS z podejściem Clean Architecture:
 
-## Etap 1 - infrastruktura danych (`terraform/stage-1-infra`)
+- `gateway-service`
+- `candidate-service`
+- `parsing-service`
+- `verification-service`
+- `qualification-service`
+- `notification-service`
 
-Tworzy:
-- 1 instancję Amazon RDS PostgreSQL,
-- 6 baz logicznych w tej jednej instancji (`gateway_db`, `candidate_db`, `parser_db`, `blacklist_db`, `qualification_db`, `notification_db`),
-- Redis (Amazon ElastiCache) dla `qualification-service`,
-- security groups i subnet groups.
+## Diagram BPMN
 
-Pliki:
-- `terraform/stage-1-infra/main.tf`
-- `terraform/stage-1-infra/variables.tf`
-- `terraform/stage-1-infra/outputs.tf`
+Poniżej osadzony diagram procesu:
 
-Uruchomienie:
+![BPMN Process](images/BPMN.svg)
 
-```bash
-cd terraform/stage-1-infra
-terraform init
-terraform apply
-```
+## Opis procesu
 
-Wynik (outputs) zawiera URL-e DB i Redis do wykorzystania w etapie 2.
+1. Klient wysyła aplikację przez Gateway (`POST /recruitment/apply`).
+2. Gateway emituje `ApplicationSubmitted` (fan-out do Candidate, Parser, Verification, Qualification).
+3. Candidate tworzy profil kandydata w swojej bazie.
+4. Parser zapisuje umiejętności i publikuje `SkillsReady`.
+5. Verification sprawdza blacklistę i publikuje `SafetyVerified`.
+6. Qualification podejmuje decyzję (`ACCEPTED`, `REJECTED`, `BLACKLISTED`) i publikuje `DecisionMade`.
+7. Notification zapisuje końcowy komunikat (`Invitation` lub `Rejection`).
 
-## Etap 2 - deployment aplikacji (`terraform/stage-2-app`)
-
-Tworzy:
-- ECS Cluster (Fargate),
-- IAM roles dla tasków,
-- CloudWatch Log Group,
-- ECS Task Definitions i ECS Services dla:
-  - `gateway`
-  - `candidate`
-  - `parsing`
-  - `verification`
-  - `qualification`
-  - `notification`
-
-Domyślnie etap 2 czyta URL-e DB/Redis z `terraform.tfstate` etapu 1.
-Można to wyłączyć (`use_stage1_state = false`) i podać zewnętrzne URL-e ręcznie.
-
-Pliki:
-- `terraform/stage-2-app/main.tf`
-- `terraform/stage-2-app/variables.tf`
-- `terraform/stage-2-app/outputs.tf`
-
-## Wymaganie: obrazy Docker
-
-Przed `terraform apply` w etapie 2 obrazy muszą być dostępne z AWS ECS
-(najczęściej w ECR). Uzupełnij mapę `images` URI-ami obrazów.
-
-Przykład `terraform/stage-2-app/terraform.tfvars`:
-
-```hcl
-aws_region    = "eu-north-1"
-project_name  = "recruitment-system"
-rabbitmq_url  = "amqps://<user>:<password>@<host>/<vhost>"
-aws_s3_bucket = "your-bucket-name"
-
-images = {
-  gateway       = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/gateway-service:latest"
-  candidate     = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/candidate-service:latest"
-  parsing       = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/parsing-service:latest"
-  verification  = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/verification-service:latest"
-  qualification = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/qualification-service:latest"
-  notification  = "123456789012.dkr.ecr.eu-north-1.amazonaws.com/notification-service:latest"
-}
-```
-
-Uruchomienie:
+## Uruchomienie
 
 ```bash
-cd terraform/stage-2-app
-terraform init
-terraform apply
+npm install
+npm run start:all
 ```
 
-## Uwaga o RabbitMQ i AWS / Azure
+Swagger dla każdego serwisu jest dostępny pod `http://localhost:<port>/docs`.
 
-RabbitMQ nie jest tworzony przez Terraform (jest usługą zewnętrzną). Podajesz go przez `rabbitmq_url` w etapie 2.
+## AWS Database per Service
 
-## Uwaga o AWS / Azure
+Każdy mikroserwis ma osobną bazę danych w AWS (zasada Database per service):
 
-Aktualna implementacja Terraform jest gotowa pod AWS.
-Jeśli DB/Redis są już poza AWS (lub poza Terraform), pomiń etap 1 i w etapie 2 ustaw:
-- `use_stage1_state = false`
-- ręcznie URL-e: `gateway_db_url`, `candidate_db_url`, `parser_db_url`,
-  `blacklist_db_url`, `qualification_db_url`, `notification_db_url`,
-  `qualification_redis_url`.
+- `gateway-service` -> Amazon RDS for PostgreSQL (`gateway_db`)
+- `candidate-service` -> Amazon RDS for PostgreSQL (`candidate_db`)
+- `parsing-service` -> Amazon RDS for PostgreSQL (`parser_db`)
+- `verification-service` -> Amazon RDS for PostgreSQL (`blacklist_db`)
+- `qualification-service` -> Amazon RDS for PostgreSQL (`qualification_db`) + Amazon ElastiCache for Redis (join-store)
+- `notification-service` -> Amazon RDS for PostgreSQL (`notification_db`)
+
+### Uzasadnienie wyboru
+
+- **Amazon RDS for PostgreSQL**: usługa natywna AWS, zgodna z TypeORM/SQL i spójnym modelem transakcyjnym używanym w serwisach.
+- **ElastiCache Redis**: tymczasowy stan procesu kwalifikacji (TTL + lock + agregacja eventów), bardzo niskie opóźnienia.
+- **S3**: pliki CV są przechowywane obiektowo, a nie w bazie relacyjnej.
+
+## Konfiguracja połączeń DB
+
+Parametry połączeń są pobierane z pliku konfiguracyjnego i zmiennych środowiskowych:
+
+- konfiguracja logiczna: `libs/shared/database/database.config.ts`
+- konfiguracja TypeORM + logi połączeń: `libs/shared/database/typeorm.config.ts`
+- wartości środowiskowe: `.env` (wzorzec: `.env.example`)
+
+## Logowanie połączenia z bazą
+
+Każdy mikroserwis loguje:
+
+1. rozpoczęcie połączenia (`Starting database connection`)
+2. wynik połączenia:
+   - sukces (`Database connection established`)
+   - błąd (`Database connection failed`)
+
+Na konsoli widać to **tylko dla procesów, które faktycznie uruchomiłeś** (np. `npm run start:dev` odpala wyłącznie gateway). Żeby zobaczyć logi Postgresa dla wszystkich serwisów, użyj `npm run start:all` albo osobnych terminali z `npx nest start <nazwa-serwisu> --watch`.
+
+Dodatkowo każdy start zapisuje skrót zdarzeń do **`logs/db-connection.log`** (wspólny plik dla wszystkich procesów — wygodne przy `start:all`). `qualification-service` loguje też Redis (`qualification-service:redis` + wpisy `redis` w tym pliku).
+
+Komendy do zadania 7:
+
+docker stack deploy -c docker-compose.yml recruitment
+docker service ls
+docker service ps recruitment_candidate-service
+docker service scale recruitment_gateway-service=5
+docker stack rm recruitment
