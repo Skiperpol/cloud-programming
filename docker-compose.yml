@@ -1,0 +1,125 @@
+version: '3.9'
+
+x-nest-defaults: &nest-defaults
+  networks:
+    - recruitment-overlay-network
+  logging:
+    driver: 'json-file'
+    options:
+      max-size: '10m'
+      max-file: '3'
+
+services:
+  redis:
+    image: redis:7-alpine
+    networks:
+      - recruitment-overlay-network
+    ports:
+      - '6380:6379'
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+  gateway-service:
+    <<: *nest-defaults
+    image: recruitment/gateway-service:latest
+    environment:
+      PORT: 3000
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - '3000:3000'
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  candidate-service:
+    <<: *nest-defaults
+    image: recruitment/candidate-service:latest
+    environment:
+      PORT: 3001
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - '3001:3001'
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  parsing-service:
+    <<: *nest-defaults
+    image: recruitment/parsing-service:latest
+    environment:
+      PORT: 3002
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - '3002:3002'
+    deploy:
+      replicas: 4
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+
+  verification-service:
+    <<: *nest-defaults
+    image: recruitment/verification-service:latest
+    environment:
+      PORT: 3003
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - '3003:3003'
+    deploy:
+      replicas: 1
+
+  qualification-service:
+    <<: *nest-defaults
+    image: recruitment/qualification-service:latest
+    environment:
+      PORT: 3004
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      QUALIFICATION_REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - '3004:3004'
+    deploy:
+      replicas: 1
+
+  notification-service:
+    <<: *nest-defaults
+    image: recruitment/notification-service:latest
+    environment:
+      PORT: 3005
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - '3005:3005'
+    deploy:
+      replicas: 1
+
+networks:
+  recruitment-overlay-network:
+    driver: overlay
