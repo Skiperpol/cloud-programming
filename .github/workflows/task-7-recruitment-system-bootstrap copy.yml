@@ -1,0 +1,76 @@
+name: Task 7 - Recruitment System Bootstrap Backend
+
+on:
+  workflow_dispatch:
+
+env:
+  TF_BOOTSTRAP_DIR: task-7/recruitment-system/terraform-bootstrap
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve backend names
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+          STATE_BUCKET="${{ secrets.TF_TASK7_STATE_BUCKET }}"
+          if [ -z "${STATE_BUCKET}" ]; then
+            STATE_BUCKET="tfstate-${GITHUB_REPOSITORY,,}-${AWS_DEFAULT_REGION}-${ACCOUNT_ID}"
+            STATE_BUCKET="${STATE_BUCKET//\//-}"
+            STATE_BUCKET="${STATE_BUCKET//_/-}"
+            STATE_BUCKET="$(echo "${STATE_BUCKET}" | tr -cd 'a-z0-9.-' | cut -c1-63)"
+            STATE_BUCKET="${STATE_BUCKET%-}"
+          fi
+
+          echo "TF_VAR_aws_region=${AWS_DEFAULT_REGION}" >> "$GITHUB_ENV"
+          echo "TF_VAR_state_bucket_name=${STATE_BUCKET}" >> "$GITHUB_ENV"
+
+      - name: Terraform Init (bootstrap)
+        working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
+        run: terraform init -input=false
+
+      - name: Adopt existing state bucket (if already in AWS)
+        working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
+        run: |
+          set -euo pipefail
+          BUCKET="${TF_VAR_state_bucket_name}"
+          if aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
+            if ! terraform state show -no-color aws_s3_bucket.tf_state >/dev/null 2>&1; then
+              echo "Bucket ${BUCKET} already exists (e.g. shared with Task 8); importing into state..."
+              terraform import -input=false aws_s3_bucket.tf_state "${BUCKET}"
+            else
+              echo "Bucket ${BUCKET} already in Terraform state."
+            fi
+          else
+            echo "Bucket ${BUCKET} does not exist yet; apply will create it."
+          fi
+
+      - name: Terraform Apply (bootstrap backend)
+        working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Bootstrap summary
+        working-directory: ${{ env.TF_BOOTSTRAP_DIR }}
+        run: terraform output -no-color

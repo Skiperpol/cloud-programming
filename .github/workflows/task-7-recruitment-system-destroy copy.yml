@@ -1,0 +1,211 @@
+name: Task 7 - Recruitment System Destroy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy:
+    name: Terraform Destroy (Stage 2 + Stage 1)
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+      TF_VAR_rabbitmq_url: ${{ secrets.RABBITMQ_URL }}
+      TF_VAR_stage1_state_backend: s3
+      TF_VAR_stage1_state_key: task-7/recruitment-system/stage-1-infra/terraform.tfstate
+      TF_VAR_stage1_state_region: ${{ secrets.AWS_REGION }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Optional Terraform project name
+        run: |
+          if [ -n "${{ vars.TF_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve state bucket name
+        env:
+          STATE_BUCKET: ${{ secrets.TF_TASK7_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          if [ -z "${STATE_BUCKET:-}" ]; then
+            GENERATED_BUCKET="tfstate-${GITHUB_REPOSITORY,,}-${AWS_DEFAULT_REGION}-${ACCOUNT_ID}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//\//-}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//_/-}"
+            GENERATED_BUCKET="$(echo "${GENERATED_BUCKET}" | tr -cd 'a-z0-9.-' | cut -c1-63)"
+            GENERATED_BUCKET="${GENERATED_BUCKET%-}"
+            STATE_BUCKET="${GENERATED_BUCKET}"
+          fi
+
+          if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
+            echo "::error::State bucket ${STATE_BUCKET} does not exist. Run workflow 'Task 7 - Recruitment System Bootstrap Backend' first."
+            exit 1
+          fi
+
+          echo "STATE_BUCKET=${STATE_BUCKET}" >> "$GITHUB_ENV"
+          echo "TF_VAR_stage1_state_bucket=${STATE_BUCKET}" >> "$GITHUB_ENV"
+
+      - name: Terraform Init (Stage 1)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-7/recruitment-system/stage-1-infra/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
+
+      - name: Terraform Init (Stage 2)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-7/recruitment-system/stage-2-app/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
+
+      - name: Terraform Destroy (Stage 2)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          if [ -n "$TF_PROJECT_NAME_VAR" ]; then export TF_VAR_project_name="$TF_PROJECT_NAME_VAR"; fi
+          terraform destroy -auto-approve -input=false -parallelism=2
+
+      - name: Remove Stage 2 leftovers (S3 uploads bucket, ECS cluster)
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          PROJECT="${TF_PROJECT_NAME_VAR:-recruitment-system}"
+          REGION="${AWS_DEFAULT_REGION:-eu-north-1}"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          CLUSTER="${PROJECT}-cluster"
+          BUCKET="${PROJECT}-uploads-${ACCOUNT}"
+
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Removing uploads bucket s3://$BUCKET (objects + bucket)"
+            aws s3 rb "s3://${BUCKET}" --force --region "$REGION" || echo "Warning: s3 rb failed; continuing with ECS cleanup."
+          else
+            echo "Uploads bucket $BUCKET not found or inaccessible; skipping S3 cleanup."
+          fi
+
+          CLUSTER_STATUS="$(aws ecs describe-clusters --clusters "$CLUSTER" --region "$REGION" --query 'clusters[0].status' --output text 2>/dev/null || echo "")"
+          if [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
+            SERVICES="$(aws ecs list-services --cluster "$CLUSTER" --region "$REGION" --query 'serviceArns[]' --output text 2>/dev/null || true)"
+            if [ -n "$SERVICES" ]; then
+              for svc in $SERVICES; do
+                echo "Deleting ECS service $svc"
+                aws ecs delete-service --cluster "$CLUSTER" --service "$svc" --force --region "$REGION" || true
+              done
+              for _ in $(seq 1 36); do
+                REMAINING="$(aws ecs list-services --cluster "$CLUSTER" --region "$REGION" --query 'length(serviceArns)' --output text 2>/dev/null || echo 1)"
+                [ "${REMAINING:-1}" = "0" ] && break
+                sleep 10
+              done
+            fi
+            echo "Deleting ECS cluster $CLUSTER"
+            aws ecs delete-cluster --cluster "$CLUSTER" --region "$REGION" || true
+          else
+            echo "ECS cluster $CLUSTER not ACTIVE; skipping ECS cleanup."
+          fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            repo="${PROJECT}-${key}"
+            if aws ecr describe-repositories --repository-names "$repo" --region "$REGION" >/dev/null 2>&1; then
+              echo "Deleting ECR repository $repo"
+              aws ecr delete-repository --repository-name "$repo" --force --region "$REGION" || true
+            fi
+          done
+
+          LG="/ecs/${PROJECT}"
+          if aws logs describe-log-groups --log-group-name-prefix "$LG" --region "$REGION" \
+            --query "logGroups[?logGroupName=='${LG}'] | length(@)" --output text 2>/dev/null | grep -qx 1; then
+            echo "Deleting log group $LG"
+            aws logs delete-log-group --log-group-name "$LG" --region "$REGION" || true
+          fi
+
+          for RLE in "${PROJECT}-ecs-execution-role" "${PROJECT}-ecs-task-role"; do
+            if aws iam get-role --role-name "$RLE" >/dev/null 2>&1; then
+              echo "Deleting IAM role $RLE"
+              for arn in $(aws iam list-attached-role-policies --role-name "$RLE" --query 'AttachedPolicies[].PolicyArn' --output text 2>/dev/null || true); do
+                [ -n "$arn" ] && aws iam detach-role-policy --role-name "$RLE" --policy-arn "$arn" || true
+              done
+              for pol in $(aws iam list-role-policies --role-name "$RLE" --query 'PolicyNames[]' --output text 2>/dev/null || true); do
+                [ -n "$pol" ] && aws iam delete-role-policy --role-name "$RLE" --policy-name "$pol" || true
+              done
+              aws iam delete-role --role-name "$RLE" || true
+            fi
+          done
+
+      - name: Remove PostgreSQL database resources from state
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        run: |
+          if ! terraform state pull >/dev/null 2>&1; then
+            echo "No Terraform state found for Stage 1, skipping state cleanup."
+            exit 0
+          fi
+
+          MATCHES="$(terraform state list 2>/dev/null || true)"
+          if [ -n "$MATCHES" ]; then
+            while IFS= read -r addr; do
+              if [[ "$addr" == postgresql_database.service_db* ]]; then
+                terraform state rm "$addr"
+              fi
+            done <<< "$MATCHES"
+          else
+            echo "No postgresql_database resources in state."
+          fi
+
+      - name: Import RDS instance to state (if exists)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          RDS_ID="${PROJECT}-postgres"
+
+          if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" >/dev/null 2>&1; then
+            terraform import aws_db_instance.main "$RDS_ID" || true
+          else
+            echo "RDS instance not found: $RDS_ID"
+          fi
+
+      - name: Terraform Destroy (Stage 1)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        env:
+          TF_PROJECT_NAME_VAR: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          if [ -n "$TF_PROJECT_NAME_VAR" ]; then export TF_VAR_project_name="$TF_PROJECT_NAME_VAR"; fi
+          terraform destroy -auto-approve -input=false
+

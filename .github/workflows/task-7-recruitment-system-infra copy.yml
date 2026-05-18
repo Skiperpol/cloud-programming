@@ -1,0 +1,207 @@
+name: Task 7 - Recruitment System Infra
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    name: Terraform (Stage 1 + Stage 2)
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+      TF_VAR_rabbitmq_url: ${{ secrets.RABBITMQ_URL }}
+      TF_VAR_stage1_state_backend: s3
+      TF_VAR_stage1_state_key: task-7/recruitment-system/stage-1-infra/terraform.tfstate
+      TF_VAR_stage1_state_region: ${{ secrets.AWS_REGION }}
+      TF_VAR_create_service_databases: "true"
+      TF_VAR_create_subnet_and_param_groups: "false"
+      TF_VAR_create_redis_replication_group: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Optional Terraform project name (Stage 1 + 2)
+        run: |
+          if [ -n "${{ vars.TF_PROJECT_NAME }}" ]; then
+            echo "TF_VAR_project_name=${{ vars.TF_PROJECT_NAME }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve state bucket name
+        env:
+          STATE_BUCKET: ${{ secrets.TF_TASK7_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          if [ -z "${STATE_BUCKET:-}" ]; then
+            GENERATED_BUCKET="tfstate-${GITHUB_REPOSITORY,,}-${AWS_DEFAULT_REGION}-${ACCOUNT_ID}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//\//-}"
+            GENERATED_BUCKET="${GENERATED_BUCKET//_/-}"
+            GENERATED_BUCKET="$(echo "${GENERATED_BUCKET}" | tr -cd 'a-z0-9.-' | cut -c1-63)"
+            GENERATED_BUCKET="${GENERATED_BUCKET%-}"
+            STATE_BUCKET="${GENERATED_BUCKET}"
+          fi
+
+          if ! aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
+            echo "::error::State bucket ${STATE_BUCKET} does not exist. Run workflow 'Task 7 - Recruitment System Bootstrap Backend' first."
+            exit 1
+          fi
+
+          echo "STATE_BUCKET=${STATE_BUCKET}" >> "$GITHUB_ENV"
+          echo "TF_VAR_stage1_state_bucket=${STATE_BUCKET}" >> "$GITHUB_ENV"
+
+      - name: Terraform Init (Stage 1)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-7/recruitment-system/stage-1-infra/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
+
+      - name: Import existing RDS instance to Stage 1 state (if present)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        env:
+          PROJECT_NAME: ${{ vars.TF_PROJECT_NAME }}
+        run: |
+          PROJECT="${PROJECT_NAME:-recruitment-system}"
+          RDS_ID="${PROJECT}-postgres"
+
+          if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" >/dev/null 2>&1; then
+            terraform import aws_db_instance.main "$RDS_ID" || true
+          else
+            echo "RDS instance not found: $RDS_ID"
+          fi
+
+      - name: Terraform Plan (Stage 1)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        run: terraform plan -input=false
+
+      - name: Terraform Apply (Stage 1)
+        working-directory: task-7/recruitment-system/terraform/stage-1-infra
+        run: terraform apply -auto-approve -input=false
+
+      - name: Terraform Init (Stage 2)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        run: |
+          args=(
+            -reconfigure
+            -input=false
+            -backend-config="bucket=${STATE_BUCKET}"
+            -backend-config="key=task-7/recruitment-system/stage-2-app/terraform.tfstate"
+            -backend-config="region=${AWS_DEFAULT_REGION}"
+            -backend-config="encrypt=true"
+            -backend-config="use_lockfile=true"
+          )
+          terraform init "${args[@]}"
+
+      - name: Import pre-existing Stage 2 resources (if in AWS but not in state)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        run: |
+          set -euo pipefail
+          cons_args=()
+          if [ -f terraform.tfvars ]; then cons_args+=(-var-file=terraform.tfvars); fi
+          PROJECT="$(printf 'var.project_name\n' | terraform console "${cons_args[@]}" | tr -d '\r' | sed 's/^"//;s/"$//')"
+          echo "Resolved project_name for imports: ${PROJECT}"
+
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          BUCKET="${PROJECT}-uploads-${ACCOUNT}"
+          CLUSTER="${PROJECT}-cluster"
+          LG="/ecs/${PROJECT}"
+          EXEC_ROLE="${PROJECT}-ecs-execution-role"
+          TASK_ROLE="${PROJECT}-ecs-task-role"
+          POLICY_NAME="${PROJECT}-ecs-task-s3-uploads"
+
+          in_state() { terraform state show -no-color "$1" >/dev/null 2>&1; }
+
+          if ! in_state aws_s3_bucket.application_uploads && aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
+            echo "Import S3: ${BUCKET}"
+            terraform import -input=false aws_s3_bucket.application_uploads "${BUCKET}"
+          fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            repo="${PROJECT}-${key}"
+            addr="aws_ecr_repository.services[\"${key}\"]"
+            if ! in_state "${addr}" && aws ecr describe-repositories --repository-names "${repo}" >/dev/null 2>&1; then
+              echo "Import ECR: ${repo}"
+              terraform import -input=false "${addr}" "${repo}"
+            fi
+          done
+
+          if ! in_state aws_cloudwatch_log_group.ecs; then
+            if [ "$(aws logs describe-log-groups --log-group-name-prefix "${LG}" --query "length(logGroups[?logGroupName=='${LG}'])" --output text 2>/dev/null || echo 0)" = "1" ]; then
+              echo "Import log group: ${LG}"
+              terraform import -input=false aws_cloudwatch_log_group.ecs "${LG}"
+            fi
+          fi
+
+          if ! in_state aws_iam_role.execution_role && aws iam get-role --role-name "${EXEC_ROLE}" >/dev/null 2>&1; then
+            echo "Import IAM execution role"
+            terraform import -input=false aws_iam_role.execution_role "${EXEC_ROLE}"
+          fi
+          if ! in_state aws_iam_role.task_role && aws iam get-role --role-name "${TASK_ROLE}" >/dev/null 2>&1; then
+            echo "Import IAM task role"
+            terraform import -input=false aws_iam_role.task_role "${TASK_ROLE}"
+          fi
+
+          if in_state aws_iam_role.execution_role; then
+            if ! in_state aws_iam_role_policy_attachment.execution_role_policy && \
+              aws iam list-attached-role-policies --role-name "${EXEC_ROLE}" --query "AttachedPolicies[?PolicyArn=='arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy']" --output text 2>/dev/null | grep -q .; then
+              terraform import -input=false aws_iam_role_policy_attachment.execution_role_policy \
+                "${EXEC_ROLE}/arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+            fi
+            if ! in_state aws_iam_role_policy_attachment.execution_role_ecr_readonly && \
+              aws iam list-attached-role-policies --role-name "${EXEC_ROLE}" --query "AttachedPolicies[?PolicyArn=='arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly']" --output text 2>/dev/null | grep -q .; then
+              terraform import -input=false aws_iam_role_policy_attachment.execution_role_ecr_readonly \
+                "${EXEC_ROLE}/arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            fi
+          fi
+
+          if in_state aws_iam_role.task_role && in_state aws_s3_bucket.application_uploads && \
+            ! in_state aws_iam_role_policy.task_s3_application_uploads && \
+            aws iam get-role-policy --role-name "${TASK_ROLE}" --policy-name "${POLICY_NAME}" >/dev/null 2>&1; then
+            terraform import -input=false aws_iam_role_policy.task_s3_application_uploads "${TASK_ROLE}:${POLICY_NAME}"
+          fi
+
+          if ! in_state aws_ecs_cluster.this && [ "$(aws ecs describe-clusters --clusters "${CLUSTER}" --query 'clusters[0].status' --output text 2>/dev/null || echo "")" = "ACTIVE" ]; then
+            echo "Import ECS cluster: ${CLUSTER}"
+            terraform import -input=false aws_ecs_cluster.this "${CLUSTER}"
+          fi
+
+          for key in gateway candidate parsing verification qualification notification; do
+            svc="${PROJECT}-${key}"
+            addr="aws_ecs_service.service[\"${key}\"]"
+            st="$(aws ecs describe-services --cluster "${CLUSTER}" --services "${svc}" --query 'services[0].status' --output text 2>/dev/null || echo "")"
+            if ! in_state "${addr}" && { [ "${st}" = "ACTIVE" ] || [ "${st}" = "DRAINING" ]; }; then
+              echo "Import ECS service: ${CLUSTER}/${svc}"
+              terraform import -input=false "${addr}" "${CLUSTER}/${svc}"
+            fi
+          done
+
+      - name: Terraform Plan (Stage 2)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        run: terraform plan -input=false
+
+      - name: Terraform Apply (Stage 2)
+        working-directory: task-7/recruitment-system/terraform/stage-2-app
+        run: terraform apply -auto-approve -input=false -parallelism=5
