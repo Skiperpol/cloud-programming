@@ -20,7 +20,6 @@ async function bootstrap() {
     },
   });
   await app.startAllMicroservices();
-  const port = Number(process.env.PORT ?? process.env.port ?? 3005);
-  await app.listen(port);
+  await app.listen(process.env.port ?? 3005);
 }
 bootstrap();

@@ -18,9 +18,7 @@ export class S3ApplicationFileStorage implements ApplicationFileStoragePort {
   private readonly bucket: string;
 
   constructor(config: ConfigService) {
-    this.bucket =
-      process.env.AWS_S3_BUCKET?.trim() ||
-      config.getOrThrow<string>('AWS_S3_BUCKET');
+    this.bucket = config.getOrThrow('AWS_S3_BUCKET');
     this.client = new S3Client({
       region: config.get('AWS_REGION'),
       endpoint: config.get('AWS_S3_ENDPOINT'),

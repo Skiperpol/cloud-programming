@@ -31,11 +31,12 @@ import { RecruitmentController } from './interface/http/recruitment.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      ignoreEnvFile: process.env.NODE_ENV === 'production',
       load: [databaseConfig],
     }),
     WinstonLoggerModule.forService('gateway-service'),
-    TypeOrmModule.forRootAsync(createTypeOrmConfig('gateway-service', 'gateway')),
+    TypeOrmModule.forRootAsync(
+      createTypeOrmConfig('gateway-service', 'gateway'),
+    ),
     TypeOrmModule.forFeature([GatewayApplicationEntity]),
     ClientsModule.register([
       {

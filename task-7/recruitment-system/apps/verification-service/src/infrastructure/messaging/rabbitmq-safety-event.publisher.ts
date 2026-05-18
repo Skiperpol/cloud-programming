@@ -8,7 +8,9 @@ import {
 
 @Injectable()
 export class RabbitMqSafetyEventPublisher implements SafetyEventPublisherPort {
-  constructor(@Inject('QUALIFICATION_BUS') private readonly client: ClientProxy) {}
+  constructor(
+    @Inject('QUALIFICATION_BUS') private readonly client: ClientProxy,
+  ) {}
 
   publishSafetyVerified(payload: SafetyVerifiedPayload): void {
     this.client.emit(SAFETY_VERIFIED, payload);
