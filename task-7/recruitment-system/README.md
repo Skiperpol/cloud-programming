@@ -138,6 +138,42 @@ Dodatkowo: `AWS_S3_BUCKET`, `AWS_REGION` z outputów; `QUALIFICATION_REDIS_URL=r
 ```bash
 npm run docker:build
 docker swarm init   # tylko przy pierwszym uruchomieniu
+cd task-7/recruitment-system   # .env musi być w tym katalogu (Compose podstawia ${VAR})
+npm run stack:deploy
+```
+
+### HTTP do każdego mikroserwisu (z laptopa)
+
+Po deploy wszystkie serwisy mają Swagger i REST na **localhost**:
+
+| Serwis | Port | Swagger | Przykładowe API |
+|--------|------|---------|-----------------|
+| gateway | 3000 | http://localhost:3000/docs | `POST /recruitment/apply` |
+| candidate | 3001 | http://localhost:3001/docs | `GET /candidates` |
+| parsing | 3002 | http://localhost:3002/docs | `GET /parser/...` |
+| verification | 3003 | http://localhost:3003/docs | `GET /verification/...` |
+| qualification | 3004 | http://localhost:3004/docs | `GET /qualification/...` |
+| notification | 3005 | http://localhost:3005/docs | `GET /notifications` |
+
+Health na każdym: `curl http://localhost:300X/health`
+
+**Uwaga:** pełny flow rekrutacji (`/apply`) i tak startuje w **gateway** i idzie dalej przez **RabbitMQ** — wołanie candidate/parsing bez wcześniejszego eventu pokaże tylko ich własne dane (np. listy), nie „cały proces”.
+
+### Swarm wolno odpowiada?
+
+| Przyczyna | Co zrobić |
+|-----------|-----------|
+| Ingress mesh (gateway, candidate, parsing) | Na 1 PC wolniejsze — normalne; verification/qualification/notification mają `mode: host` (szybsze przy 1 replice) |
+| Wiele replik + `mode: host` | Na jednym węźle tylko 1 replika może trzymać port — przy scale używaj ingress |
+| Demo skalowania | `docker service scale recruitment_system_parsing-service=6` — HTTP przez ingress, może mulić |
+| `/apply` muli | S3 + RDS + RabbitMQ — logi gateway |
+| Repliki `0/N` | `docker service ps … --no-trunc` |
+
+Po zmianie compose:
+
+```bash
+docker stack rm recruitment_system
+# poczekaj aż zniknie: docker stack ls
 npm run stack:deploy
 ```
 
@@ -157,3 +193,27 @@ Workflow: `Task 7 - Recruitment System Destroy`
 ---
 
 **Uwaga:** `qualification-service` używa Redis z stacku (`redis://redis:6379`), nie ElastiCache — wystarczy na zadanie 7.
+
+
+### Komendy do dockera
+docker swarm init
+docker stack deploy -c docker-compose.yml recruitment_system
+docker service ls
+docker service ps recruitment_system_gateway-service
+docker service scale recruitment_system_gateway-service=5
+docker stack rm recruitment_system
+
+
+export $(envsubst < .env | grep -v '^#' | xargs) && docker stack deploy -c docker-compose.yml recruitment_system
+
+
+cd task-7/recruitment-system/terraform/stage-1-infra
+
+terraform init -reconfigure \
+  -backend-config="bucket=TU_WKLEJ_NAZWE_BUCKETA" \
+  -backend-config="key=task-7/recruitment-system/stage-1-infra/terraform.tfstate" \
+  -backend-config="region=${AWS_REGION}" \
+  -backend-config="encrypt=true" \
+  -backend-config="use_lockfile=true"
+
+terraform output -json database_urls
